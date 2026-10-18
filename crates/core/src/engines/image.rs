@@ -13,7 +13,9 @@ use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 
 /// Formats the `image` crate decodes on its own.
-const NATIVE: &[&str] = &["jpg", "jpeg", "png", "webp", "tiff", "tif", "bmp", "gif", "ico", "tga"];
+const NATIVE: &[&str] = &[
+    "jpg", "jpeg", "png", "webp", "tiff", "tif", "bmp", "gif", "ico", "tga",
+];
 
 pub fn decode(path: &Path, dpi: u32) -> Result<DynamicImage> {
     let e = ext(path);
@@ -26,14 +28,17 @@ pub fn decode(path: &Path, dpi: u32) -> Result<DynamicImage> {
     // HEIC, AVIF and anything else ImageIO understands.
     let tmp = scratch()?;
     let png = tmp.path().join("decoded.png");
-    exec("/usr/bin/sips", [
-        "-s".as_ref(),
-        "format".as_ref(),
-        "png".as_ref(),
-        path.as_os_str(),
-        "--out".as_ref(),
-        png.as_os_str(),
-    ])?;
+    exec(
+        "/usr/bin/sips",
+        [
+            "-s".as_ref(),
+            "format".as_ref(),
+            "png".as_ref(),
+            path.as_os_str(),
+            "--out".as_ref(),
+            png.as_os_str(),
+        ],
+    )?;
     decode_native(&png)
 }
 
@@ -59,9 +64,18 @@ fn decode_svg(path: &Path, dpi: u32) -> Result<DynamicImage> {
     let tree = usvg::Tree::from_data(&data, &opt).map_err(anyhow::Error::from)?;
     // SVG user units are CSS pixels (96 dpi).
     let scale = (dpi as f32 / 96.0).max(1.0);
-    let size = tree.size().to_int_size().scale_by(scale).ok_or_else(|| anyhow::anyhow!("empty SVG"))?;
-    let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height()).ok_or_else(|| anyhow::anyhow!("SVG too large"))?;
-    resvg::render(&tree, tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
+    let size = tree
+        .size()
+        .to_int_size()
+        .scale_by(scale)
+        .ok_or_else(|| anyhow::anyhow!("empty SVG"))?;
+    let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height())
+        .ok_or_else(|| anyhow::anyhow!("SVG too large"))?;
+    resvg::render(
+        &tree,
+        tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
     // tiny-skia stores premultiplied RGBA.
     let mut rgba = RgbaImage::new(size.width(), size.height());
     for (dst, src) in rgba.pixels_mut().zip(pixmap.pixels()) {
@@ -91,7 +105,9 @@ pub fn encode(img: &DynamicImage, target: &str, out: &Path, quality: u8) -> Resu
     match target {
         "jpg" | "jpeg" => {
             let w = BufWriter::new(File::create(out)?);
-            flatten(img).write_with_encoder(JpegEncoder::new_with_quality(w, q)).map_err(io)?;
+            flatten(img)
+                .write_with_encoder(JpegEncoder::new_with_quality(w, q))
+                .map_err(io)?;
         }
         "png" => {
             let w = BufWriter::new(File::create(out)?);
@@ -106,24 +122,29 @@ pub fn encode(img: &DynamicImage, target: &str, out: &Path, quality: u8) -> Resu
         "avif" => {
             let w = BufWriter::new(File::create(out)?);
             let enc = image::codecs::avif::AvifEncoder::new_with_speed_quality(w, 6, q);
-            DynamicImage::ImageRgba8(img.to_rgba8()).write_with_encoder(enc).map_err(io)?;
+            DynamicImage::ImageRgba8(img.to_rgba8())
+                .write_with_encoder(enc)
+                .map_err(io)?;
         }
         "heic" | "heif" => {
             let tmp = scratch()?;
             let png = tmp.path().join("in.png");
             img.save_with_format(&png, ImageFormat::Png).map_err(io)?;
             let fmt_q = format!("{}", q);
-            exec("/usr/bin/sips", [
-                "-s".as_ref(),
-                "format".as_ref(),
-                "heic".as_ref(),
-                "-s".as_ref(),
-                "formatOptions".as_ref(),
-                fmt_q.as_ref(),
-                png.as_os_str(),
-                "--out".as_ref(),
-                out.as_os_str(),
-            ])?;
+            exec(
+                "/usr/bin/sips",
+                [
+                    "-s".as_ref(),
+                    "format".as_ref(),
+                    "heic".as_ref(),
+                    "-s".as_ref(),
+                    "formatOptions".as_ref(),
+                    fmt_q.as_ref(),
+                    png.as_os_str(),
+                    "--out".as_ref(),
+                    out.as_os_str(),
+                ],
+            )?;
         }
         "ico" => {
             let small = if img.width() > 256 || img.height() > 256 {
@@ -131,12 +152,18 @@ pub fn encode(img: &DynamicImage, target: &str, out: &Path, quality: u8) -> Resu
             } else {
                 img.clone()
             };
-            DynamicImage::ImageRgba8(small.to_rgba8()).save_with_format(out, ImageFormat::Ico).map_err(io)?;
+            DynamicImage::ImageRgba8(small.to_rgba8())
+                .save_with_format(out, ImageFormat::Ico)
+                .map_err(io)?;
         }
         "gif" => {
-            DynamicImage::ImageRgba8(img.to_rgba8()).save_with_format(out, ImageFormat::Gif).map_err(io)?;
+            DynamicImage::ImageRgba8(img.to_rgba8())
+                .save_with_format(out, ImageFormat::Gif)
+                .map_err(io)?;
         }
-        "bmp" => DynamicImage::ImageRgb8(flatten(img)).save_with_format(out, ImageFormat::Bmp).map_err(io)?,
+        "bmp" => DynamicImage::ImageRgb8(flatten(img))
+            .save_with_format(out, ImageFormat::Bmp)
+            .map_err(io)?,
         "tiff" | "tif" => img.save_with_format(out, ImageFormat::Tiff).map_err(io)?,
         "tga" => img.save_with_format(out, ImageFormat::Tga).map_err(io)?,
         other => return Err(anyhow::anyhow!("cannot encode {other}").into()),
@@ -231,7 +258,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let svg = dir.path().join("logo.svg");
         std::fs::write(&svg, r#"<svg xmlns="http://www.w3.org/2000/svg" width="96" height="48"><rect width="96" height="48" fill="orange"/></svg>"#).unwrap();
-        let png = convert(&svg, "png", &Options { dpi: 192, ..Default::default() }).unwrap();
+        let png = convert(
+            &svg,
+            "png",
+            &Options {
+                dpi: 192,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let img = decode_native(&png).unwrap();
         assert_eq!((img.width(), img.height()), (192, 96));
     }

@@ -8,14 +8,27 @@ use std::path::PathBuf;
 pub fn run(name: &str, inputs: &[PathBuf], _opts: &Options) -> Result<Vec<PathBuf>> {
     match name {
         "copy-path" => {
-            let text = inputs.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n");
+            let text = inputs
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join("\n");
             copy_text(&text)?;
         }
         "copy" => copy_files(inputs)?,
         "terminal" => {
-            let first = inputs.first().ok_or_else(|| Error::UnknownOperation("action:terminal".into()))?;
-            let dir = if first.is_dir() { first.clone() } else { first.parent().map(Into::into).unwrap_or_default() };
-            exec("/usr/bin/open", ["-a".as_ref(), "Terminal".as_ref(), dir.as_os_str()])?;
+            let first = inputs
+                .first()
+                .ok_or_else(|| Error::UnknownOperation("action:terminal".into()))?;
+            let dir = if first.is_dir() {
+                first.clone()
+            } else {
+                first.parent().map(Into::into).unwrap_or_default()
+            };
+            exec(
+                "/usr/bin/open",
+                ["-a".as_ref(), "Terminal".as_ref(), dir.as_os_str()],
+            )?;
         }
         "reveal" => {
             let mut args = vec![std::ffi::OsString::from("-R")];
@@ -56,8 +69,10 @@ fn copy_files(paths: &[PathBuf]) -> Result<()> {
         .iter()
         .map(|p| NSURL::fileURLWithPath(&NSString::from_str(&p.to_string_lossy())))
         .collect();
-    let writers: Vec<&ProtocolObject<dyn NSPasteboardWriting>> =
-        urls.iter().map(|u| ProtocolObject::from_ref(&**u)).collect();
+    let writers: Vec<&ProtocolObject<dyn NSPasteboardWriting>> = urls
+        .iter()
+        .map(|u| ProtocolObject::from_ref(&**u))
+        .collect();
     let pb = NSPasteboard::generalPasteboard();
     pb.clearContents();
     if pb.writeObjects(&NSArray::from_slice(&writers)) {
@@ -69,7 +84,10 @@ fn copy_files(paths: &[PathBuf]) -> Result<()> {
 
 #[cfg(not(target_os = "macos"))]
 fn copy_text(_: &str) -> Result<()> {
-    Err(Error::MissingTool("a clipboard", "Only macOS is supported for now."))
+    Err(Error::MissingTool(
+        "a clipboard",
+        "Only macOS is supported for now.",
+    ))
 }
 
 #[cfg(not(target_os = "macos"))]

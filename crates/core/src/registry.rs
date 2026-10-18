@@ -14,7 +14,7 @@ pub enum Category {
     Action,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct Operation {
     /// Stable identifier, e.g. `convert:webp`, `tool:compress`, `action:airdrop`.
     pub id: String,
@@ -37,16 +37,24 @@ impl Operation {
 fn convert_targets(path: &Path) -> Vec<&'static str> {
     let e = ext(path);
     let targets: Vec<&'static str> = match detect(path) {
-        Kind::Image => vec!["jpg", "png", "webp", "heic", "avif", "tiff", "gif", "bmp", "ico", "pdf"],
+        Kind::Image => vec![
+            "jpg", "png", "webp", "heic", "avif", "tiff", "gif", "bmp", "ico", "pdf",
+        ],
         Kind::Svg => vec!["png", "jpg", "webp", "avif", "tiff", "pdf"],
         Kind::Audio => vec!["mp3", "m4a", "wav", "flac", "ogg", "opus", "aiff", "wma"],
-        Kind::Video => vec!["mp4", "mov", "mkv", "webm", "avi", "wmv", "gif", "mp3", "m4a", "wav"],
-        Kind::Pdf => vec!["png", "jpg", "tiff", "docx", "odt", "rtf", "html", "txt", "md", "epub"],
+        Kind::Video => vec![
+            "mp4", "mov", "mkv", "webm", "avi", "wmv", "gif", "mp3", "m4a", "wav",
+        ],
+        Kind::Pdf => vec![
+            "png", "jpg", "tiff", "docx", "odt", "rtf", "html", "txt", "md", "epub",
+        ],
         Kind::Document if document::can_read(&e) => {
             vec!["docx", "odt", "rtf", "pdf", "html", "txt", "md", "epub"]
         }
         Kind::Slides if document::office_available() => vec!["pdf", "pptx", "odp"],
-        Kind::Spreadsheet if sheet::can_read(&e) => vec!["xlsx", "csv", "tsv", "json", "html", "md"],
+        Kind::Spreadsheet if sheet::can_read(&e) => {
+            vec!["xlsx", "csv", "tsv", "json", "html", "md"]
+        }
         Kind::Subtitle => vec!["srt", "vtt", "txt"],
         Kind::Archive => vec!["extract", "zip", "tar.gz"],
         Kind::Folder | Kind::Other | Kind::Document | Kind::Slides | Kind::Spreadsheet => {
@@ -177,7 +185,12 @@ pub fn operations(inputs: &[PathBuf], category: Category) -> Vec<Operation> {
 ///
 /// Actions (`action:*`) are platform/UI concerns and are executed by the app,
 /// except for the few that make sense headless (see [`crate::engines::actions`]).
-pub fn run(op_id: &str, inputs: &[PathBuf], opts: &Options, progress: Progress) -> Result<Vec<PathBuf>> {
+pub fn run(
+    op_id: &str,
+    inputs: &[PathBuf],
+    opts: &Options,
+    progress: Progress,
+) -> Result<Vec<PathBuf>> {
     let (cat, name) = op_id
         .split_once(':')
         .ok_or_else(|| Error::UnknownOperation(op_id.into()))?;
@@ -205,7 +218,12 @@ fn unsupported(op: &str, input: &Path) -> Error {
     }
 }
 
-fn convert_one(input: &Path, target: &str, opts: &Options, progress: Progress) -> Result<Vec<PathBuf>> {
+fn convert_one(
+    input: &Path,
+    target: &str,
+    opts: &Options,
+    progress: Progress,
+) -> Result<Vec<PathBuf>> {
     if !convert_targets(input).contains(&target) {
         return Err(unsupported(&format!("convert:{target}"), input));
     }
@@ -215,7 +233,9 @@ fn convert_one(input: &Path, target: &str, opts: &Options, progress: Progress) -
         }
         (Kind::Archive, "extract") => archive::extract(input, opts).map(|p| vec![p]),
         (Kind::Archive, t) => archive::repack(input, t, opts).map(|p| vec![p]),
-        (Kind::Image | Kind::Svg, "pdf") => pdf::images_to_pdf(&[input.to_path_buf()], opts).map(|p| vec![p]),
+        (Kind::Image | Kind::Svg, "pdf") => {
+            pdf::images_to_pdf(&[input.to_path_buf()], opts).map(|p| vec![p])
+        }
         (Kind::Image | Kind::Svg, t) => image::convert(input, t, opts).map(|p| vec![p]),
         (Kind::Audio | Kind::Video, t) => media::convert(input, t, opts, progress).map(|p| vec![p]),
         (Kind::Pdf, "png" | "jpg" | "tiff") => pdf::to_images(input, target, opts, progress),
@@ -227,8 +247,15 @@ fn convert_one(input: &Path, target: &str, opts: &Options, progress: Progress) -
     }
 }
 
-fn run_tool(name: &str, inputs: &[PathBuf], opts: &Options, progress: Progress) -> Result<Vec<PathBuf>> {
-    let first = inputs.first().ok_or_else(|| Error::UnknownOperation(name.into()))?;
+fn run_tool(
+    name: &str,
+    inputs: &[PathBuf],
+    opts: &Options,
+    progress: Progress,
+) -> Result<Vec<PathBuf>> {
+    let first = inputs
+        .first()
+        .ok_or_else(|| Error::UnknownOperation(name.into()))?;
     if name == "archive" {
         return archive::create(inputs, "zip", opts).map(|p| vec![p]);
     }
@@ -277,7 +304,10 @@ mod tests {
 
     #[test]
     fn mixed_selection_keeps_common_targets() {
-        let ops = ids(operations(&["a.png".into(), "b.jpg".into()], Category::Convert));
+        let ops = ids(operations(
+            &["a.png".into(), "b.jpg".into()],
+            Category::Convert,
+        ));
         assert!(ops.contains(&"convert:webp".to_string()));
         assert!(!ops.contains(&"convert:png".to_string()));
         assert!(!ops.contains(&"convert:jpg".to_string()));
@@ -286,7 +316,10 @@ mod tests {
     #[test]
     fn multi_tools_need_several_files() {
         let one = ids(operations(&["a.pdf".into()], Category::Tool));
-        let two = ids(operations(&["a.pdf".into(), "b.pdf".into()], Category::Tool));
+        let two = ids(operations(
+            &["a.pdf".into(), "b.pdf".into()],
+            Category::Tool,
+        ));
         assert!(!one.contains(&"tool:merge".to_string()));
         assert!(two.contains(&"tool:merge".to_string()));
     }

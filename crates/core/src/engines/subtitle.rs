@@ -15,7 +15,10 @@ pub struct Cue {
 fn parse_time(s: &str) -> Option<i64> {
     let s = s.trim().replace(',', ".");
     let (hms, ms) = s.split_once('.').unwrap_or((&s, "0"));
-    let parts: Vec<i64> = hms.split(':').map(|p| p.trim().parse().ok()).collect::<Option<_>>()?;
+    let parts: Vec<i64> = hms
+        .split(':')
+        .map(|p| p.trim().parse().ok())
+        .collect::<Option<_>>()?;
     let (h, m, sec) = match parts[..] {
         [h, m, s] => (h, m, s),
         [m, s] => (0, m, s),
@@ -27,7 +30,13 @@ fn parse_time(s: &str) -> Option<i64> {
 
 fn fmt_time(ms: i64, sep: char) -> String {
     let ms = ms.max(0);
-    format!("{:02}:{:02}:{:02}{sep}{:03}", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000)
+    format!(
+        "{:02}:{:02}:{:02}{sep}{:03}",
+        ms / 3_600_000,
+        ms / 60_000 % 60,
+        ms / 1000 % 60,
+        ms % 1000
+    )
 }
 
 /// Parses both SRT and VTT: blocks separated by blank lines, each with a `-->` line.
@@ -37,10 +46,14 @@ pub fn parse(src: &str) -> Vec<Cue> {
     for block in src.split("\n\n") {
         let mut lines = block.lines().skip_while(|l| !l.contains("-->"));
         let Some(timing) = lines.next() else { continue };
-        let Some((a, b)) = timing.split_once("-->") else { continue };
+        let Some((a, b)) = timing.split_once("-->") else {
+            continue;
+        };
         // VTT allows cue settings after the end time.
         let b = b.split_whitespace().next().unwrap_or("");
-        let (Some(start), Some(end)) = (parse_time(a), parse_time(b)) else { continue };
+        let (Some(start), Some(end)) = (parse_time(a), parse_time(b)) else {
+            continue;
+        };
         let text = lines.collect::<Vec<_>>().join("\n");
         cues.push(Cue { start, end, text });
     }
@@ -50,7 +63,15 @@ pub fn parse(src: &str) -> Vec<Cue> {
 pub fn to_srt(cues: &[Cue]) -> String {
     cues.iter()
         .enumerate()
-        .map(|(i, c)| format!("{}\n{} --> {}\n{}\n", i + 1, fmt_time(c.start, ','), fmt_time(c.end, ','), c.text))
+        .map(|(i, c)| {
+            format!(
+                "{}\n{} --> {}\n{}\n",
+                i + 1,
+                fmt_time(c.start, ','),
+                fmt_time(c.end, ','),
+                c.text
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -58,7 +79,12 @@ pub fn to_srt(cues: &[Cue]) -> String {
 pub fn to_vtt(cues: &[Cue]) -> String {
     let mut s = String::from("WEBVTT\n\n");
     for c in cues {
-        s.push_str(&format!("{} --> {}\n{}\n\n", fmt_time(c.start, '.'), fmt_time(c.end, '.'), c.text));
+        s.push_str(&format!(
+            "{} --> {}\n{}\n\n",
+            fmt_time(c.start, '.'),
+            fmt_time(c.end, '.'),
+            c.text
+        ));
     }
     s
 }
@@ -81,7 +107,13 @@ fn write(cues: &[Cue], target: &str, out: &Path) -> Result<()> {
     let body = match target {
         "srt" => to_srt(cues),
         "vtt" => to_vtt(cues),
-        "txt" => cues.iter().map(|c| strip_tags(&c.text)).collect::<Vec<_>>().join("\n") + "\n",
+        "txt" => {
+            cues.iter()
+                .map(|c| strip_tags(&c.text))
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n"
+        }
         other => return Err(anyhow::anyhow!("cannot write {other} subtitles").into()),
     };
     std::fs::write(out, body)?;
@@ -113,10 +145,19 @@ pub fn tool(input: &Path, name: &str, opts: &Options) -> Result<PathBuf> {
     };
     let cues: Vec<Cue> = load(input)?
         .into_iter()
-        .map(|c| Cue { start: (c.start + delta).max(0), end: (c.end + delta).max(0), ..c })
+        .map(|c| Cue {
+            start: (c.start + delta).max(0),
+            end: (c.end + delta).max(0),
+            ..c
+        })
         .collect();
     let target = ext(input);
-    let out = output_path(input, if delta > 0 { "-delayed" } else { "-advanced" }, &target, opts);
+    let out = output_path(
+        input,
+        if delta > 0 { "-delayed" } else { "-advanced" },
+        &target,
+        opts,
+    );
     write(&cues, &target, &out)?;
     Ok(out)
 }

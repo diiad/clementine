@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Satsuma Settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <header>
+    <img src="logo.png" alt="" width="56" height="56">
+    <div>
+      <h1>Satsuma</h1>
+      <p class="muted">Drag a file, hold a key, drop it on the wheel. Everything runs on this Mac.</p>
+    </div>
+  </header>
+
+  <section>
+    <h2>Keys</h2>
+    <p class="muted">Hold one of these while dragging files.</p>
+    <div class="row"><label for="convert_key">Convert</label><select id="convert_key"></select></div>
+    <div class="row"><label for="tools_key">Tools</label><select id="tools_key"></select></div>
+    <div class="row"><label for="actions_key">Actions</label><select id="actions_key"></select></div>
+    <div class="row"><label for="shortcut">Wheel for Finder selection</label><input id="shortcut" placeholder="Alt+Super+KeyT"></div>
+    <p id="key-warning" class="warning" hidden>Each wheel needs its own key.</p>
+  </section>
+
+  <section>
+    <h2>Output</h2>
+    <div class="row">
+      <label for="output">Save results</label>
+      <select id="output">
+        <option value="beside">Next to the original</option>
+        <option value="downloads">In Downloads</option>
+        <option value="custom">In a folder…</option>
+      </select>
+    </div>
+    <div class="row" id="custom-row" hidden>
+      <span class="path" id="custom_dir">No folder chosen</span>
+      <button id="choose">Choose…</button>
+    </div>
+    <div class="row"><label for="quality">Quality <span id="quality-val"></span></label><input id="quality" type="range" min="40" max="100"></div>
+    <div class="row">
+      <label for="dpi">PDF &amp; SVG resolution</label>
+      <select id="dpi"><option>72</option><option>150</option><option>300</option><option>600</option></select>
+    </div>
+    <div class="row"><label for="reveal_after">Reveal results in Finder</label><input id="reveal_after" type="checkbox"></div>
+    <div class="row"><label for="notify">Notify when long jobs finish</label><input id="notify" type="checkbox"></div>
+  </section>
+
+  <section>
+    <h2>General</h2>
+    <div class="row"><label for="enabled">Enabled</label><input id="enabled" type="checkbox"></div>
+    <div class="row"><label for="autostart">Open at login</label><input id="autostart" type="checkbox"></div>
+  </section>
+
+  <section>
+    <h2>Engines</h2>
+    <div class="row"><span>ffmpeg (audio &amp; video)</span><span id="ffmpeg" class="status"></span></div>
+    <div class="row"><span>LibreOffice (slides, better Office → PDF)</span><span id="libreoffice" class="status"></span></div>
+    <p class="muted small" id="version"></p>
+  </section>
+
+  <script src="settings.js"></script>
+</body>
+</html>

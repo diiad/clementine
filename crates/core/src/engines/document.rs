@@ -10,7 +10,19 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 const TEXTUTIL: &str = "/usr/bin/textutil";
-const TEXTUTIL_IN: &[&str] = &["txt", "text", "rtf", "rtfd", "html", "htm", "doc", "docx", "odt", "wordml", "webarchive"];
+const TEXTUTIL_IN: &[&str] = &[
+    "txt",
+    "text",
+    "rtf",
+    "rtfd",
+    "html",
+    "htm",
+    "doc",
+    "docx",
+    "odt",
+    "wordml",
+    "webarchive",
+];
 
 pub fn office() -> Option<PathBuf> {
     let app = PathBuf::from("/Applications/LibreOffice.app/Contents/MacOS/soffice");
@@ -25,43 +37,64 @@ pub fn office_available() -> bool {
 }
 
 pub fn can_read(e: &str) -> bool {
-    TEXTUTIL_IN.contains(&e) || matches!(e, "md" | "markdown" | "epub") || (e == "pages" && office_available())
+    TEXTUTIL_IN.contains(&e)
+        || matches!(e, "md" | "markdown" | "epub")
+        || (e == "pages" && office_available())
 }
 
 /// Convert with LibreOffice into `dir`, returning the produced file.
 fn soffice(input: &Path, target: &str, dir: &Path) -> Result<PathBuf> {
-    let bin = office().ok_or(Error::MissingTool("LibreOffice", "Install it from libreoffice.org or with `brew install --cask libreoffice`."))?;
+    let bin = office().ok_or(Error::MissingTool(
+        "LibreOffice",
+        "Install it from libreoffice.org or with `brew install --cask libreoffice`.",
+    ))?;
     let profile = format!("-env:UserInstallation=file://{}/lo-profile", dir.display());
-    exec(&bin, [
-        profile.as_ref(),
-        "--headless".as_ref(),
-        "--convert-to".as_ref(),
-        target.as_ref(),
-        "--outdir".as_ref(),
-        dir.as_os_str(),
-        input.as_os_str(),
-    ])?;
+    exec(
+        &bin,
+        [
+            profile.as_ref(),
+            "--headless".as_ref(),
+            "--convert-to".as_ref(),
+            target.as_ref(),
+            "--outdir".as_ref(),
+            dir.as_os_str(),
+            input.as_os_str(),
+        ],
+    )?;
     let produced = dir.join(format!("{}.{target}", stem(input)));
     if produced.is_file() {
         Ok(produced)
     } else {
-        Err(Error::ToolFailed { tool: "soffice".into(), message: "no output produced".into() })
+        Err(Error::ToolFailed {
+            tool: "soffice".into(),
+            message: "no output produced".into(),
+        })
     }
 }
 
 fn textutil(src: &Path, format: &str, out: &Path) -> Result<()> {
     let mut args: Vec<&std::ffi::OsStr> = vec!["-convert".as_ref(), format.as_ref()];
     if matches!(ext(src).as_str(), "txt" | "text") {
-        args.extend([std::ffi::OsStr::new("-inputencoding"), std::ffi::OsStr::new("UTF-8")]);
+        args.extend([
+            std::ffi::OsStr::new("-inputencoding"),
+            std::ffi::OsStr::new("UTF-8"),
+        ]);
     }
-    args.extend([std::ffi::OsStr::new("-output"), out.as_os_str(), src.as_os_str()]);
+    args.extend([
+        std::ffi::OsStr::new("-output"),
+        out.as_os_str(),
+        src.as_os_str(),
+    ]);
     exec(TEXTUTIL, args)?;
     Ok(())
 }
 
 pub fn markdown_to_html(md: &str, title: &str) -> String {
     use pulldown_cmark::{html, Options as MdOptions, Parser};
-    let parser = Parser::new_ext(md, MdOptions::ENABLE_TABLES | MdOptions::ENABLE_STRIKETHROUGH | MdOptions::ENABLE_TASKLISTS);
+    let parser = Parser::new_ext(
+        md,
+        MdOptions::ENABLE_TABLES | MdOptions::ENABLE_STRIKETHROUGH | MdOptions::ENABLE_TASKLISTS,
+    );
     let mut body = String::new();
     html::push_html(&mut body, parser);
     format!(
@@ -71,7 +104,10 @@ pub fn markdown_to_html(md: &str, title: &str) -> String {
 }
 
 fn escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 /// Turn `input` into something textutil can read, inside `tmp`.
@@ -106,7 +142,11 @@ fn convert_into(input: &Path, title: &str, target: &str, out: &Path) -> Result<(
     let tmp = scratch()?;
     let e = ext(input);
     let is_slides = matches!(e.as_str(), "pptx" | "ppt" | "odp" | "key");
-    if is_slides || (target == "pdf" && office_available() && matches!(e.as_str(), "docx" | "doc" | "odt" | "pages")) {
+    if is_slides
+        || (target == "pdf"
+            && office_available()
+            && matches!(e.as_str(), "docx" | "doc" | "odt" | "pages"))
+    {
         let produced = soffice(input, target, tmp.path())?;
         std::fs::copy(produced, out)?;
         return Ok(());
@@ -120,7 +160,8 @@ fn convert_into(input: &Path, title: &str, target: &str, out: &Path) -> Result<(
         }
         "docx" | "odt" | "rtf" | "txt" | "html" | "doc" => textutil(&src, target, out),
         "md" => {
-            let md = htmd::convert(&to_html(&src, tmp.path())?).map_err(|e| anyhow::anyhow!("{e}"))?;
+            let md =
+                htmd::convert(&to_html(&src, tmp.path())?).map_err(|e| anyhow::anyhow!("{e}"))?;
             std::fs::write(out, md)?;
             Ok(())
         }
@@ -190,8 +231,13 @@ fn attr(tag: &str, name: &str) -> Option<String> {
 
 fn tags<'a>(xml: &'a str, name: &'a str) -> impl Iterator<Item = &'a str> + 'a {
     xml.split('<').filter(move |t| {
-        t.strip_prefix(name).is_some_and(|r| r.starts_with(|c: char| c.is_whitespace() || c == '/' || c == '>'))
-            || t.split_once(':').is_some_and(|(_, local)| local.starts_with(name) && local[name.len()..].starts_with(|c: char| c.is_whitespace() || c == '/' || c == '>'))
+        t.strip_prefix(name)
+            .is_some_and(|r| r.starts_with(|c: char| c.is_whitespace() || c == '/' || c == '>'))
+            || t.split_once(':').is_some_and(|(_, local)| {
+                local.starts_with(name)
+                    && local[name.len()..]
+                        .starts_with(|c: char| c.is_whitespace() || c == '/' || c == '>')
+            })
     })
 }
 
@@ -199,7 +245,9 @@ fn epub_to_html(path: &Path) -> Result<String> {
     let mut zip = zip::ZipArchive::new(std::fs::File::open(path)?).map_err(anyhow::Error::from)?;
     let mut read = |name: &str| -> Result<String> {
         let mut s = String::new();
-        zip.by_name(name).map_err(anyhow::Error::from)?.read_to_string(&mut s)?;
+        zip.by_name(name)
+            .map_err(anyhow::Error::from)?
+            .read_to_string(&mut s)?;
         Ok(s)
     };
     let container = read("META-INF/container.xml")?;
@@ -207,16 +255,28 @@ fn epub_to_html(path: &Path) -> Result<String> {
         .find_map(|t| attr(t, "full-path"))
         .ok_or_else(|| anyhow::anyhow!("invalid EPUB: no rootfile"))?;
     let opf = read(&opf_path)?;
-    let base = Path::new(&opf_path).parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let base = Path::new(&opf_path)
+        .parent()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let items: Vec<(String, String)> = tags(&opf, "item")
         .filter_map(|t| Some((attr(t, "id")?, attr(t, "href")?)))
         .collect();
     let mut body = String::new();
     for idref in tags(&opf, "itemref").filter_map(|t| attr(t, "idref")) {
-        let Some((_, href)) = items.iter().find(|(id, _)| *id == idref) else { continue };
-        let full = if base.is_empty() { href.clone() } else { format!("{base}/{href}") };
+        let Some((_, href)) = items.iter().find(|(id, _)| *id == idref) else {
+            continue;
+        };
+        let full = if base.is_empty() {
+            href.clone()
+        } else {
+            format!("{base}/{href}")
+        };
         let Ok(doc) = read(&full) else { continue };
-        let start = doc.find("<body").and_then(|i| doc[i..].find('>').map(|j| i + j + 1)).unwrap_or(0);
+        let start = doc
+            .find("<body")
+            .and_then(|i| doc[i..].find('>').map(|j| i + j + 1))
+            .unwrap_or(0);
         let end = doc.rfind("</body>").unwrap_or(doc.len());
         body.push_str(&doc[start..end.max(start)]);
         body.push('\n');
@@ -230,7 +290,13 @@ fn write_epub(title: &str, markdown: &str, out: &Path) -> Result<()> {
     let mut body = String::new();
     html::push_html(&mut body, Parser::new(markdown));
     let title = escape(title);
-    let id = format!("urn:satsuma:{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
+    let id = format!(
+        "urn:satsuma:{:x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
     let chapter = format!(
         "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE html>\n<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>{title}</title></head><body>\n{body}</body></html>\n"
     );
@@ -261,7 +327,8 @@ fn write_epub(title: &str, markdown: &str, out: &Path) -> Result<()> {
 "#;
     let mut zip = zip::ZipWriter::new(std::fs::File::create(out)?);
     let stored = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
-    let deflated = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let deflated =
+        SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     let z = |e: zip::result::ZipError| Error::Other(e.into());
     zip.start_file("mimetype", stored).map_err(z)?;
     zip.write_all(b"application/epub+zip")?;
@@ -286,7 +353,11 @@ mod tests {
     fn markdown_goes_everywhere() {
         let dir = tempfile::tempdir().unwrap();
         let md = dir.path().join("notes.md");
-        std::fs::write(&md, "# Titre\n\nUn paragraphe avec **du gras** et é à ü.\n\n- un\n- deux\n").unwrap();
+        std::fs::write(
+            &md,
+            "# Titre\n\nUn paragraphe avec **du gras** et é à ü.\n\n- un\n- deux\n",
+        )
+        .unwrap();
         let opts = Options::default();
         for t in ["docx", "odt", "rtf", "txt", "html", "pdf", "epub"] {
             let out = convert(&md, t, &opts).unwrap();
@@ -300,14 +371,19 @@ mod tests {
         let txt = convert(&epub, "txt", &opts).unwrap();
         assert!(std::fs::read_to_string(txt).unwrap().contains("paragraphe"));
         let pdf = dir.path().join("notes.pdf");
-        assert!(super::super::pdf::text(&pdf).unwrap().contains("paragraphe"));
+        assert!(super::super::pdf::text(&pdf)
+            .unwrap()
+            .contains("paragraphe"));
         let from_pdf = from_pdf(&pdf, "docx", &opts).unwrap();
         assert!(from_pdf.exists());
     }
 
     #[test]
     fn reads_attributes() {
-        assert_eq!(attr(r#"item id="a" href='b.xhtml'"#, "href").as_deref(), Some("b.xhtml"));
+        assert_eq!(
+            attr(r#"item id="a" href='b.xhtml'"#, "href").as_deref(),
+            Some("b.xhtml")
+        );
         assert_eq!(attr(r#"item xid="a" id="b""#, "id").as_deref(), Some("b"));
     }
 }

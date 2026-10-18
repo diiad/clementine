@@ -73,11 +73,16 @@ mod mac {
     pub fn write_compressed(doc: &PDFDocument, out: &Path) -> Result<()> {
         use objc2::runtime::AnyObject;
         use objc2_foundation::NSNumber;
-        use objc2_pdf_kit::{PDFDocumentOptimizeImagesForScreenOption, PDFDocumentSaveImagesAsJPEGOption};
+        use objc2_pdf_kit::{
+            PDFDocumentOptimizeImagesForScreenOption, PDFDocumentSaveImagesAsJPEGOption,
+        };
         let yes = NSNumber::new_bool(true);
         let opts: Retained<NSDictionary<NSString, AnyObject>> = unsafe {
             NSDictionary::from_slices(
-                &[PDFDocumentSaveImagesAsJPEGOption, PDFDocumentOptimizeImagesForScreenOption],
+                &[
+                    PDFDocumentSaveImagesAsJPEGOption,
+                    PDFDocumentOptimizeImagesForScreenOption,
+                ],
                 &[yes.as_ref() as &AnyObject, yes.as_ref() as &AnyObject],
             )
         };
@@ -91,8 +96,9 @@ mod mac {
     pub fn page_from_image(path: &Path) -> Result<Retained<PDFPage>> {
         let image = NSImage::initWithContentsOfURL(NSImage::alloc(), &url(path))
             .ok_or_else(|| anyhow::anyhow!("could not read image {}", path.display()))?;
-        unsafe { PDFPage::initWithImage(PDFPage::alloc(), &image) }
-            .ok_or_else(|| anyhow::anyhow!("could not make a PDF page from {}", path.display()).into())
+        unsafe { PDFPage::initWithImage(PDFPage::alloc(), &image) }.ok_or_else(|| {
+            anyhow::anyhow!("could not make a PDF page from {}", path.display()).into()
+        })
     }
 
     /// Rasterise one page at `dpi` onto a white background.
@@ -110,19 +116,25 @@ mod mac {
             return Err(anyhow::anyhow!("page size out of range").into());
         }
         let mut buf = vec![0u8; w * h * 4];
-        let space = CGColorSpace::new_device_rgb().ok_or_else(|| anyhow::anyhow!("no RGB colour space"))?;
+        let space =
+            CGColorSpace::new_device_rgb().ok_or_else(|| anyhow::anyhow!("no RGB colour space"))?;
         // kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big → RGBA in memory.
         let info = 1 | (4 << 12);
         let raw = unsafe {
             CGBitmapContextCreate(buf.as_mut_ptr().cast(), w, h, 8, w * 4, &*space, info)
         };
         let ctx: CFRetained<CGContext> = unsafe {
-            CFRetained::from_raw(NonNull::new(raw).ok_or_else(|| anyhow::anyhow!("could not allocate bitmap"))?)
+            CFRetained::from_raw(
+                NonNull::new(raw).ok_or_else(|| anyhow::anyhow!("could not allocate bitmap"))?,
+            )
         };
         CGContext::set_rgb_fill_color(Some(&ctx), 1.0, 1.0, 1.0, 1.0);
         CGContext::fill_rect(
             Some(&ctx),
-            CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(w as CGFloat, h as CGFloat)),
+            CGRect::new(
+                CGPoint::new(0.0, 0.0),
+                CGSize::new(w as CGFloat, h as CGFloat),
+            ),
         );
         CGContext::scale_ctm(Some(&ctx), scale, scale);
         unsafe {
@@ -137,14 +149,23 @@ mod mac {
     #[link(name = "CoreText", kind = "framework")]
     extern "C" {
         fn CTFramesetterCreateWithAttributedString(s: *const c_void) -> *mut c_void;
-        fn CTFramesetterCreateFrame(fs: *mut c_void, range: CFRange, path: *const c_void, attrs: *const c_void) -> *mut c_void;
+        fn CTFramesetterCreateFrame(
+            fs: *mut c_void,
+            range: CFRange,
+            path: *const c_void,
+            attrs: *const c_void,
+        ) -> *mut c_void;
         fn CTFrameGetVisibleStringRange(frame: *mut c_void) -> CFRange;
         fn CTFrameDraw(frame: *mut c_void, ctx: *mut c_void);
     }
 
     #[link(name = "CoreGraphics", kind = "framework")]
     extern "C" {
-        fn CGPDFContextCreateWithURL(url: *const c_void, media_box: *const CGRect, info: *const c_void) -> *mut c_void;
+        fn CGPDFContextCreateWithURL(
+            url: *const c_void,
+            media_box: *const CGRect,
+            info: *const c_void,
+        ) -> *mut c_void;
         fn CGPDFContextBeginPage(ctx: *mut c_void, info: *const c_void);
         fn CGPDFContextEndPage(ctx: *mut c_void);
         fn CGPDFContextClose(ctx: *mut c_void);
@@ -169,19 +190,32 @@ mod mac {
         use objc2_app_kit::NSAttributedStringAppKitDocumentFormats;
         use objc2_foundation::{NSAttributedString, NSData};
         let data = NSData::with_bytes(rtf);
-        let text = unsafe { NSAttributedString::initWithRTF_documentAttributes(NSAttributedString::alloc(), &data, None) }
-            .ok_or_else(|| anyhow::anyhow!("could not read the document text"))?;
+        let text = unsafe {
+            NSAttributedString::initWithRTF_documentAttributes(
+                NSAttributedString::alloc(),
+                &data,
+                None,
+            )
+        }
+        .ok_or_else(|| anyhow::anyhow!("could not read the document text"))?;
         let total = text.length() as isize;
         let page = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(595.0, 842.0));
         let margin = 64.0;
         let body = CGRect::new(
             CGPoint::new(margin, margin),
-            CGSize::new(page.size.width - 2.0 * margin, page.size.height - 2.0 * margin),
+            CGSize::new(
+                page.size.width - 2.0 * margin,
+                page.size.height - 2.0 * margin,
+            ),
         );
         let out_url = url(out);
         unsafe {
             let fs = CTFramesetterCreateWithAttributedString(Retained::as_ptr(&text).cast());
-            let ctx = CGPDFContextCreateWithURL(Retained::as_ptr(&out_url).cast(), &page, std::ptr::null());
+            let ctx = CGPDFContextCreateWithURL(
+                Retained::as_ptr(&out_url).cast(),
+                &page,
+                std::ptr::null(),
+            );
             if fs.is_null() || ctx.is_null() {
                 return Err(anyhow::anyhow!("could not create the PDF").into());
             }
@@ -189,7 +223,15 @@ mod mac {
             let mut start = 0isize;
             loop {
                 CGPDFContextBeginPage(ctx, std::ptr::null());
-                let frame = CTFramesetterCreateFrame(fs, CFRange { location: start, length: 0 }, path, std::ptr::null());
+                let frame = CTFramesetterCreateFrame(
+                    fs,
+                    CFRange {
+                        location: start,
+                        length: 0,
+                    },
+                    path,
+                    std::ptr::null(),
+                );
                 CTFrameDraw(frame, ctx);
                 let visible = CTFrameGetVisibleStringRange(frame);
                 CFRelease(frame);
@@ -208,7 +250,9 @@ mod mac {
     }
 
     pub fn text(doc: &PDFDocument) -> String {
-        unsafe { doc.string() }.map(|s| s.to_string()).unwrap_or_default()
+        unsafe { doc.string() }
+            .map(|s| s.to_string())
+            .unwrap_or_default()
     }
 
     /// The text of every page, with fonts and styles, as RTF.
@@ -217,7 +261,9 @@ mod mac {
         for i in 0..page_count(doc) {
             if let Some(s) = unsafe { page(doc, i)?.attributedString() } {
                 all.appendAttributedString(&s);
-                let br = objc2_foundation::NSAttributedString::from_nsstring(&NSString::from_str("\n\n"));
+                let br = objc2_foundation::NSAttributedString::from_nsstring(&NSString::from_str(
+                    "\n\n",
+                ));
                 all.appendAttributedString(&br);
             }
         }
@@ -238,7 +284,10 @@ pub use mac::render;
 mod mac {
     use super::*;
     pub fn unsupported<T>() -> Result<T> {
-        Err(Error::MissingTool("PDFKit", "PDF features currently require macOS."))
+        Err(Error::MissingTool(
+            "PDFKit",
+            "PDF features currently require macOS.",
+        ))
     }
 }
 
@@ -260,14 +309,24 @@ pub fn page_count(input: &Path) -> Result<usize> {
 }
 
 /// One image per page: `doc.png` for single pages, `doc-1.png`, `doc-2.png`… otherwise.
-pub fn to_images(input: &Path, target: &str, opts: &Options, progress: Progress) -> Result<Vec<PathBuf>> {
+pub fn to_images(
+    input: &Path,
+    target: &str,
+    opts: &Options,
+    progress: Progress,
+) -> Result<Vec<PathBuf>> {
     macos_only!({
         let doc = mac::open(input)?;
         let n = mac::page_count(&doc);
         let mut out = Vec::with_capacity(n);
         for i in 0..n {
-            let img = image::DynamicImage::ImageRgba8(mac::render(&*mac::page(&doc, i)?, opts.dpi)?);
-            let suffix = if n == 1 { String::new() } else { format!("-{}", i + 1) };
+            let img =
+                image::DynamicImage::ImageRgba8(mac::render(&*mac::page(&doc, i)?, opts.dpi)?);
+            let suffix = if n == 1 {
+                String::new()
+            } else {
+                format!("-{}", i + 1)
+            };
             let path = output_path(input, &suffix, target, opts);
             super::image::encode(&img, target, &path, opts.quality)?;
             out.push(path);
@@ -380,9 +439,14 @@ mod tests {
     /// Make a two-page PDF from two generated PNGs.
     fn sample_pdf(dir: &Path) -> PathBuf {
         let mut pngs = Vec::new();
-        for (i, c) in [[255u8, 0, 0, 255], [0, 0, 255, 255]].into_iter().enumerate() {
+        for (i, c) in [[255u8, 0, 0, 255], [0, 0, 255, 255]]
+            .into_iter()
+            .enumerate()
+        {
             let p = dir.join(format!("page{i}.png"));
-            image::RgbaImage::from_pixel(144, 72, image::Rgba(c)).save(&p).unwrap();
+            image::RgbaImage::from_pixel(144, 72, image::Rgba(c))
+                .save(&p)
+                .unwrap();
             pngs.push(p);
         }
         images_to_pdf(&pngs, &Options::default()).unwrap()
@@ -394,18 +458,33 @@ mod tests {
         let pdf = sample_pdf(dir.path());
         assert_eq!(page_count(&pdf).unwrap(), 2);
 
-        let opts = Options { dpi: 144, ..Default::default() };
+        let opts = Options {
+            dpi: 144,
+            ..Default::default()
+        };
         let pngs = to_images(&pdf, "png", &opts, &|_| {}).unwrap();
         assert_eq!(pngs.len(), 2);
         let first = image::open(&pngs[0]).unwrap().to_rgba8();
         let centre = first.get_pixel(first.width() / 2, first.height() / 2).0;
-        assert!(centre[0] > 200 && centre[2] < 60, "page 1 should be red, got {centre:?}");
+        assert!(
+            centre[0] > 200 && centre[2] < 60,
+            "page 1 should be red, got {centre:?}"
+        );
 
         let merged = merge(&[pdf.clone(), pdf.clone()], &opts).unwrap();
         assert_eq!(page_count(&merged).unwrap(), 4);
         assert_eq!(tool(&pdf, "split", &opts).unwrap().len(), 2);
         let rotated = tool(&pdf, "rotate-cw", &opts).unwrap().remove(0);
-        let img = to_images(&rotated, "png", &Options { dpi: 72, ..Default::default() }, &|_| {}).unwrap();
+        let img = to_images(
+            &rotated,
+            "png",
+            &Options {
+                dpi: 72,
+                ..Default::default()
+            },
+            &|_| {},
+        )
+        .unwrap();
         let r = image::open(&img[0]).unwrap();
         assert!(r.height() > r.width(), "rotated page should be portrait");
         assert!(tool(&pdf, "compress", &opts).unwrap()[0].exists());

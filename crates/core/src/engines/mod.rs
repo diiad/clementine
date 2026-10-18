@@ -26,10 +26,13 @@ where
         .unwrap_or(program)
         .to_string_lossy()
         .into_owned();
-    let out = Command::new(program).args(args).output().map_err(|e| Error::ToolFailed {
-        tool: name.clone(),
-        message: e.to_string(),
-    })?;
+    let out = Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|e| Error::ToolFailed {
+            tool: name.clone(),
+            message: e.to_string(),
+        })?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         let message = stderr
@@ -39,7 +42,10 @@ where
             .unwrap_or("exited with an error")
             .trim()
             .to_string();
-        return Err(Error::ToolFailed { tool: name, message });
+        return Err(Error::ToolFailed {
+            tool: name,
+            message,
+        });
     }
     Ok(out)
 }

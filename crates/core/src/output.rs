@@ -71,7 +71,10 @@ mod tests {
         let first = output_path(&input, "", "jpg", &opts);
         assert_eq!(first, dir.path().join("photo.jpg"));
         std::fs::write(&first, b"x").unwrap();
-        assert_eq!(output_path(&input, "", "jpg", &opts), dir.path().join("photo 2.jpg"));
+        assert_eq!(
+            output_path(&input, "", "jpg", &opts),
+            dir.path().join("photo 2.jpg")
+        );
         assert_eq!(stem(Path::new("a/b.tar.gz")), "b");
     }
 }

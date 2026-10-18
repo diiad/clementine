@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  bundle:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Build app and DMG
+        working-directory: app/src-tauri
+        run: cargo tauri build
+      - name: Build CLI
+        run: cargo build --release -p satsuma-cli
+      - name: Collect artifacts
+        run: |
+          mkdir dist
+          cp target/release/bundle/dmg/*.dmg dist/
+          tar -czf dist/satsuma-cli-macos-arm64.tar.gz -C target/release satsuma
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

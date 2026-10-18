@@ -30,11 +30,24 @@ pub const VIDEO_IN: &[&str] = &[
     "mp4", "mov", "m4v", "mkv", "webm", "avi", "wmv", "flv", "mpg", "mpeg", "3gp", "ts", "mts",
 ];
 pub const DOCUMENT_IN: &[&str] = &[
-    "docx", "doc", "rtf", "odt", "txt", "text", "html", "htm", "md", "markdown", "epub",
-    "webarchive", "pages",
+    "docx",
+    "doc",
+    "rtf",
+    "odt",
+    "txt",
+    "text",
+    "html",
+    "htm",
+    "md",
+    "markdown",
+    "epub",
+    "webarchive",
+    "pages",
 ];
 pub const SLIDES_IN: &[&str] = &["pptx", "ppt", "odp", "key"];
-pub const SPREADSHEET_IN: &[&str] = &["xlsx", "xlsm", "xls", "xlsb", "ods", "csv", "tsv", "numbers"];
+pub const SPREADSHEET_IN: &[&str] = &[
+    "xlsx", "xlsm", "xls", "xlsb", "ods", "csv", "tsv", "numbers",
+];
 pub const SUBTITLE_IN: &[&str] = &["srt", "vtt"];
 pub const ARCHIVE_IN: &[&str] = &[
     "zip", "tar", "tgz", "gz", "bz2", "tbz", "xz", "txz", "rar", "7z", "cpio", "iso",

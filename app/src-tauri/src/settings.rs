@@ -1,0 +1,100 @@
+//! Persistent preferences, stored as JSON in the app config directory.
+
+use crate::watcher::Modifier;
+use satsuma_core::{Category, Options};
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputLocation {
+    /// Next to the original file.
+    Beside,
+    Downloads,
+    Custom,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+    pub enabled: bool,
+    pub convert_key: Modifier,
+    pub tools_key: Modifier,
+    pub actions_key: Modifier,
+    pub output: OutputLocation,
+    pub custom_dir: Option<PathBuf>,
+    pub quality: u8,
+    pub dpi: u32,
+    pub reveal_after: bool,
+    pub notify: bool,
+    /// Global shortcut that opens the wheel for the Finder selection.
+    pub shortcut: String,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            convert_key: Modifier::Shift,
+            tools_key: Modifier::Command,
+            actions_key: Modifier::Control,
+            output: OutputLocation::Beside,
+            custom_dir: None,
+            quality: 85,
+            dpi: 300,
+            reveal_after: false,
+            notify: true,
+            shortcut: "Alt+Super+KeyT".into(),
+        }
+    }
+}
+
+impl Settings {
+    pub fn load(path: &Path) -> Self {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn save(&self, path: &Path) -> anyhow::Result<()> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        std::fs::write(path, serde_json::to_string_pretty(self)?)?;
+        Ok(())
+    }
+
+    pub fn options(&self) -> Options {
+        let out_dir = match self.output {
+            OutputLocation::Beside => None,
+            OutputLocation::Downloads => {
+                std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Downloads"))
+            }
+            OutputLocation::Custom => self.custom_dir.clone(),
+        };
+        Options {
+            out_dir,
+            quality: self.quality.clamp(1, 100),
+            dpi: self.dpi.clamp(36, 1200),
+        }
+    }
+
+    /// Which wheel the currently held modifiers open. Exactly one trigger key
+    /// must be held, so ⇧⌘ during a drag does nothing.
+    pub fn category_for(&self, mods: &crate::watcher::Mods) -> Option<Category> {
+        let held: Vec<Category> = [
+            (self.convert_key, Category::Convert),
+            (self.tools_key, Category::Tool),
+            (self.actions_key, Category::Action),
+        ]
+        .into_iter()
+        .filter(|(k, _)| mods.has(*k))
+        .map(|(_, c)| c)
+        .collect();
+        match held.as_slice() {
+            [one] => Some(*one),
+            _ => None,
+        }
+    }
+}

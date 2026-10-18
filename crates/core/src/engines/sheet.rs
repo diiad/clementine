@@ -55,7 +55,11 @@ pub fn can_read(e: &str) -> bool {
 pub fn read(path: &Path) -> Result<Vec<Sheet>> {
     let e = ext(path);
     if e == "csv" || e == "tsv" {
-        let delimiter = if e == "tsv" { b'\t' } else { sniff_delimiter(path)? };
+        let delimiter = if e == "tsv" {
+            b'\t'
+        } else {
+            sniff_delimiter(path)?
+        };
         let mut reader = csv::ReaderBuilder::new()
             .has_headers(false)
             .flexible(true)
@@ -67,7 +71,10 @@ pub fn read(path: &Path) -> Result<Vec<Sheet>> {
             let record = record.map_err(anyhow::Error::from)?;
             rows.push(record.iter().map(Cell::parse).collect());
         }
-        return Ok(vec![Sheet { name: stem(path), rows }]);
+        return Ok(vec![Sheet {
+            name: stem(path),
+            rows,
+        }]);
     }
     use calamine::{open_workbook_auto, Data, Reader};
     let mut wb = open_workbook_auto(path).map_err(anyhow::Error::from)?;
@@ -105,9 +112,14 @@ fn sniff_delimiter(path: &Path) -> Result<u8> {
 }
 
 fn write_delimited(rows: &Rows, delimiter: u8, out: &Path) -> Result<()> {
-    let mut w = csv::WriterBuilder::new().delimiter(delimiter).flexible(true).from_path(out).map_err(anyhow::Error::from)?;
+    let mut w = csv::WriterBuilder::new()
+        .delimiter(delimiter)
+        .flexible(true)
+        .from_path(out)
+        .map_err(anyhow::Error::from)?;
     for row in rows {
-        w.write_record(row.iter().map(Cell::text)).map_err(anyhow::Error::from)?;
+        w.write_record(row.iter().map(Cell::text))
+            .map_err(anyhow::Error::from)?;
     }
     w.flush()?;
     Ok(())
@@ -135,7 +147,9 @@ fn write_json(rows: &Rows, out: &Path) -> Result<()> {
                 let v = match row.get(i).unwrap_or(&Cell::Empty) {
                     Cell::Empty => Value::Null,
                     Cell::Text(s) => Value::String(s.clone()),
-                    Cell::Number(n) => serde_json::Number::from_f64(*n).map(Value::Number).unwrap_or(Value::Null),
+                    Cell::Number(n) => serde_json::Number::from_f64(*n)
+                        .map(Value::Number)
+                        .unwrap_or(Value::Null),
                     Cell::Bool(b) => Value::Bool(*b),
                 };
                 obj.insert(key.clone(), v);
@@ -143,12 +157,17 @@ fn write_json(rows: &Rows, out: &Path) -> Result<()> {
             Value::Object(obj)
         })
         .collect();
-    std::fs::write(out, serde_json::to_string_pretty(&records).map_err(anyhow::Error::from)? + "\n")?;
+    std::fs::write(
+        out,
+        serde_json::to_string_pretty(&records).map_err(anyhow::Error::from)? + "\n",
+    )?;
     Ok(())
 }
 
 fn esc_html(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn write_html(sheets: &[&Sheet], out: &Path) -> Result<()> {
@@ -175,7 +194,13 @@ fn write_markdown(rows: &Rows, out: &Path) -> Result<()> {
     let mut md = String::new();
     for (i, row) in rows.iter().enumerate() {
         let cells: Vec<String> = (0..width)
-            .map(|j| row.get(j).map(Cell::text).unwrap_or_default().replace('|', "\\|").replace('\n', " "))
+            .map(|j| {
+                row.get(j)
+                    .map(Cell::text)
+                    .unwrap_or_default()
+                    .replace('|', "\\|")
+                    .replace('\n', " ")
+            })
             .collect();
         md.push_str(&format!("| {} |\n", cells.join(" | ")));
         if i == 0 {
@@ -188,13 +213,24 @@ fn write_markdown(rows: &Rows, out: &Path) -> Result<()> {
 
 /// Excel sheet names: ≤ 31 chars, none of `[]:*?/\`, unique.
 fn sheet_name(raw: &str, taken: &mut Vec<String>) -> String {
-    let clean: String = raw.chars().filter(|c| !"[]:*?/\\".contains(*c)).take(31).collect();
-    let base = if clean.is_empty() { "Sheet".to_string() } else { clean };
+    let clean: String = raw
+        .chars()
+        .filter(|c| !"[]:*?/\\".contains(*c))
+        .take(31)
+        .collect();
+    let base = if clean.is_empty() {
+        "Sheet".to_string()
+    } else {
+        clean
+    };
     let mut name = base.clone();
     let mut n = 2;
     while taken.iter().any(|t| t.eq_ignore_ascii_case(&name)) {
         let suffix = format!(" {n}");
-        name = format!("{}{suffix}", base.chars().take(31 - suffix.len()).collect::<String>());
+        name = format!(
+            "{}{suffix}",
+            base.chars().take(31 - suffix.len()).collect::<String>()
+        );
         n += 1;
     }
     taken.push(name.clone());
@@ -235,7 +271,8 @@ pub fn convert(input: &Path, target: &str, opts: &Options) -> Result<Vec<PathBuf
     let sheets = read(input)?;
     if target == "xlsx" {
         let out = output_path(input, "", "xlsx", opts);
-        let named: Vec<(String, &Rows)> = sheets.iter().map(|s| (s.name.clone(), &s.rows)).collect();
+        let named: Vec<(String, &Rows)> =
+            sheets.iter().map(|s| (s.name.clone(), &s.rows)).collect();
         write_xlsx(&named, &out)?;
         return Ok(vec![out]);
     }
@@ -248,7 +285,11 @@ pub fn convert(input: &Path, target: &str, opts: &Options) -> Result<Vec<PathBuf
     let many = sheets.len() > 1;
     let mut outputs = Vec::new();
     for sheet in &sheets {
-        let suffix = if many { format!(" - {}", sheet.name.replace('/', "-")) } else { String::new() };
+        let suffix = if many {
+            format!(" - {}", sheet.name.replace('/', "-"))
+        } else {
+            String::new()
+        };
         let out = output_path(input, &suffix, target, opts);
         match target {
             "csv" => write_delimited(&sheet.rows, b',', &out)?,
@@ -267,7 +308,11 @@ pub fn merge(inputs: &[PathBuf], opts: &Options) -> Result<PathBuf> {
     let mut all = Vec::new();
     for input in inputs {
         for sheet in read(input)? {
-            let name = if ext(input) == "csv" || ext(input) == "tsv" { stem(input) } else { sheet.name.clone() };
+            let name = if ext(input) == "csv" || ext(input) == "tsv" {
+                stem(input)
+            } else {
+                sheet.name.clone()
+            };
             all.push((name, sheet.rows));
         }
     }
@@ -292,7 +337,8 @@ mod tests {
         assert_eq!(sheets[0].rows[1][1], Cell::Number(36.0));
         assert_eq!(sheets[0].rows[1][2], Cell::Text("01234".into()));
         let json = convert(&xlsx, "json", &opts).unwrap().remove(0);
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(json).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(json).unwrap()).unwrap();
         assert_eq!(v[0]["name"], "Ada");
         assert_eq!(v[1]["zip"], serde_json::Value::Null);
         for t in ["tsv", "md", "html"] {

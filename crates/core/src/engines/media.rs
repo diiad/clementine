@@ -21,8 +21,15 @@ pub fn duration(input: &Path) -> Option<f64> {
         .output()
         .ok()?;
     let text = String::from_utf8_lossy(&out.stderr);
-    let line = text.lines().find(|l| l.trim_start().starts_with("Duration:"))?;
-    let stamp = line.trim_start().strip_prefix("Duration:")?.split(',').next()?.trim();
+    let line = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("Duration:"))?;
+    let stamp = line
+        .trim_start()
+        .strip_prefix("Duration:")?
+        .split(',')
+        .next()?
+        .trim();
     parse_timestamp(stamp)
 }
 
@@ -38,11 +45,20 @@ fn parse_timestamp(s: &str) -> Option<f64> {
 /// reporting progress against `total` seconds.
 fn run_ffmpeg(args: &[String], out: &Path, total: Option<f64>, progress: Progress) -> Result<()> {
     let mut cmd = Command::new(ffmpeg()?);
-    cmd.args(["-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-progress", "pipe:1", "-nostats"])
-        .args(args)
-        .arg(out)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.args([
+        "-hide_banner",
+        "-nostdin",
+        "-y",
+        "-loglevel",
+        "error",
+        "-progress",
+        "pipe:1",
+        "-nostats",
+    ])
+    .args(args)
+    .arg(out)
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| Error::ToolFailed {
         tool: "ffmpeg".into(),
         message: e.to_string(),
@@ -66,7 +82,11 @@ fn run_ffmpeg(args: &[String], out: &Path, total: Option<f64>, progress: Progres
     let stderr = err_reader.join().unwrap_or_default();
     if !status.success() {
         let _ = std::fs::remove_file(out);
-        let message = stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("conversion failed");
+        let message = stderr
+            .lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("conversion failed");
         return Err(Error::ToolFailed {
             tool: "ffmpeg".into(),
             message: message.trim().into(),
@@ -100,10 +120,41 @@ fn audio_codec(target: &str) -> Vec<String> {
 fn video_codec(target: &str, crf: u8) -> Vec<String> {
     let crf = crf.to_string();
     let mut v = match target {
-        "mp4" | "m4v" | "mov" | "mkv" => s(&["-c:v", "libx264", "-preset", "medium", "-crf", &crf, "-pix_fmt", "yuv420p", "-vf", EVEN, "-c:a", "aac", "-b:a", "160k"]),
-        "webm" => s(&["-c:v", "libvpx-vp9", "-crf", &(crf.parse::<u8>().unwrap_or(23) + 10).to_string(), "-b:v", "0", "-row-mt", "1", "-pix_fmt", "yuv420p", "-c:a", "libopus", "-b:a", "128k"]),
-        "avi" => s(&["-c:v", "mpeg4", "-q:v", "3", "-vf", EVEN, "-c:a", "libmp3lame", "-q:a", "3"]),
-        "wmv" => s(&["-c:v", "wmv2", "-b:v", "3M", "-vf", EVEN, "-c:a", "wmav2", "-b:a", "192k"]),
+        "mp4" | "m4v" | "mov" | "mkv" => s(&[
+            "-c:v", "libx264", "-preset", "medium", "-crf", &crf, "-pix_fmt", "yuv420p", "-vf",
+            EVEN, "-c:a", "aac", "-b:a", "160k",
+        ]),
+        "webm" => s(&[
+            "-c:v",
+            "libvpx-vp9",
+            "-crf",
+            &(crf.parse::<u8>().unwrap_or(23) + 10).to_string(),
+            "-b:v",
+            "0",
+            "-row-mt",
+            "1",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "libopus",
+            "-b:a",
+            "128k",
+        ]),
+        "avi" => s(&[
+            "-c:v",
+            "mpeg4",
+            "-q:v",
+            "3",
+            "-vf",
+            EVEN,
+            "-c:a",
+            "libmp3lame",
+            "-q:a",
+            "3",
+        ]),
+        "wmv" => s(&[
+            "-c:v", "wmv2", "-b:v", "3M", "-vf", EVEN, "-c:a", "wmav2", "-b:a", "192k",
+        ]),
         _ => Vec::new(),
     };
     if matches!(target, "mp4" | "m4v" | "mov") {
@@ -120,7 +171,10 @@ pub fn convert(input: &Path, target: &str, opts: &Options, progress: Progress) -
     let out = output_path(input, "", target, opts);
     let total = duration(input);
     let mut args = input_args(input);
-    let audio_only = matches!(target, "mp3" | "m4a" | "aac" | "wav" | "flac" | "ogg" | "opus" | "aiff" | "wma");
+    let audio_only = matches!(
+        target,
+        "mp3" | "m4a" | "aac" | "wav" | "flac" | "ogg" | "opus" | "aiff" | "wma"
+    );
     if audio_only {
         args.push("-vn".into());
         args.extend(audio_codec(target));
@@ -153,12 +207,22 @@ fn crf_for(quality: u8) -> u8 {
 
 fn is_h264_aac(input: &Path) -> bool {
     let Ok(ff) = ffmpeg() else { return false };
-    let Ok(out) = Command::new(ff).args(["-hide_banner", "-i"]).arg(input).output() else {
+    let Ok(out) = Command::new(ff)
+        .args(["-hide_banner", "-i"])
+        .arg(input)
+        .output()
+    else {
         return false;
     };
     let text = String::from_utf8_lossy(&out.stderr);
-    let video_ok = text.lines().filter(|l| l.contains("Video:")).all(|l| l.contains("h264"));
-    let audio_ok = text.lines().filter(|l| l.contains("Audio:")).all(|l| l.contains("aac"));
+    let video_ok = text
+        .lines()
+        .filter(|l| l.contains("Video:"))
+        .all(|l| l.contains("h264"));
+    let audio_ok = text
+        .lines()
+        .filter(|l| l.contains("Audio:"))
+        .all(|l| l.contains("aac"));
     video_ok && audio_ok && text.contains("Video:")
 }
 
@@ -179,7 +243,10 @@ pub fn tool(input: &Path, name: &str, opts: &Options, progress: Progress) -> Res
         ("resize-720" | "resize-1080", true) => {
             let h = if name == "resize-720" { 720 } else { 1080 };
             let mut v = video_codec("mp4", crf_for(opts.quality));
-            let i = v.iter().position(|a| a == "-vf").expect("mp4 args have -vf");
+            let i = v
+                .iter()
+                .position(|a| a == "-vf")
+                .expect("mp4 args have -vf");
             v[i + 1] = format!("scale=-2:'min({h},ih)'");
             args.extend(v);
             (if h == 720 { "-720p" } else { "-1080p" }, "mp4".into())
@@ -204,11 +271,21 @@ pub fn tool(input: &Path, name: &str, opts: &Options, progress: Progress) -> Res
                 v.extend(s(&["-vf", "transpose=1"]));
             }
             args.extend(v);
-            ("-rotated", if video_codec(&e, 20).is_empty() { "mp4".into() } else { e.clone() })
+            (
+                "-rotated",
+                if video_codec(&e, 20).is_empty() {
+                    "mp4".into()
+                } else {
+                    e.clone()
+                },
+            )
         }
         ("speed-2x", true) => {
             let mut v = video_codec("mp4", crf_for(opts.quality));
-            let i = v.iter().position(|a| a == "-vf").expect("mp4 args have -vf");
+            let i = v
+                .iter()
+                .position(|a| a == "-vf")
+                .expect("mp4 args have -vf");
             v[i + 1] = format!("setpts=0.5*PTS,{EVEN}");
             args.extend(v);
             args.extend(s(&["-filter:a", "atempo=2.0"]));
@@ -216,7 +293,12 @@ pub fn tool(input: &Path, name: &str, opts: &Options, progress: Progress) -> Res
         }
         ("thumbnail", true) => {
             let at = total.map(|t| (t * 0.1).min(5.0)).unwrap_or(0.0);
-            args = vec!["-ss".into(), format!("{at:.2}"), "-i".into(), input.to_string_lossy().into_owned()];
+            args = vec![
+                "-ss".into(),
+                format!("{at:.2}"),
+                "-i".into(),
+                input.to_string_lossy().into_owned(),
+            ];
             args.extend(s(&["-frames:v", "1", "-q:v", "2"]));
             ("-thumbnail", "jpg".into())
         }
@@ -259,7 +341,11 @@ pub fn concat(inputs: &[PathBuf], opts: &Options, progress: Progress) -> Result<
     }
     let n = inputs.len();
     let total: Option<f64> = inputs.iter().map(|p| duration(p)).sum();
-    let target = if video { "mp4".to_string() } else { ext(&inputs[0]) };
+    let target = if video {
+        "mp4".to_string()
+    } else {
+        ext(&inputs[0])
+    };
     if video {
         // Scale everything to the first clip's size so the concat filter accepts it.
         let mut graph = String::new();
@@ -272,8 +358,26 @@ pub fn concat(inputs: &[PathBuf], opts: &Options, progress: Progress) -> Result<
             graph.push_str(&format!("[v{i}][a{i}]"));
         }
         graph.push_str(&format!("concat=n={n}:v=1:a=1[v][a]"));
-        args.extend(["-filter_complex".into(), graph, "-map".into(), "[v]".into(), "-map".into(), "[a]".into()]);
-        args.extend(s(&["-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart"]));
+        args.extend([
+            "-filter_complex".into(),
+            graph,
+            "-map".into(),
+            "[v]".into(),
+            "-map".into(),
+            "[a]".into(),
+        ]);
+        args.extend(s(&[
+            "-c:v",
+            "libx264",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-movflags",
+            "+faststart",
+        ]));
     } else {
         let mut graph = String::new();
         for i in 0..n {
@@ -310,9 +414,39 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let wav = dir.path().join("tone.wav");
         let mp4 = dir.path().join("clip.mkv");
-        assert!(Command::new(&ff).args(["-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=440:d=1"]).arg(&wav).status().unwrap().success());
         assert!(Command::new(&ff)
-            .args(["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=s=161x91:d=1", "-f", "lavfi", "-i", "sine=d=1", "-shortest", "-c:v", "ffv1", "-c:a", "flac"])
+            .args([
+                "-y",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=f=440:d=1"
+            ])
+            .arg(&wav)
+            .status()
+            .unwrap()
+            .success());
+        assert!(Command::new(&ff)
+            .args([
+                "-y",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=s=161x91:d=1",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=d=1",
+                "-shortest",
+                "-c:v",
+                "ffv1",
+                "-c:a",
+                "flac"
+            ])
             .arg(&mp4)
             .status()
             .unwrap()
@@ -322,12 +456,27 @@ mod tests {
             assert!(convert(&wav, t, &opts, &|_| {}).unwrap().exists(), "{t}");
         }
         for t in ["mp4", "mov", "webm", "avi", "wmv", "gif", "mp3"] {
-            assert!(convert(&mp4, t, &opts, &|_| {}).unwrap_or_else(|e| panic!("{t}: {e}")).exists());
+            assert!(convert(&mp4, t, &opts, &|_| {})
+                .unwrap_or_else(|e| panic!("{t}: {e}"))
+                .exists());
         }
-        for t in ["compress", "thumbnail", "mute", "rotate-cw", "speed-2x", "extract-audio"] {
-            assert!(tool(&mp4, t, &opts, &|_| {}).unwrap_or_else(|e| panic!("{t}: {e}")).exists());
+        for t in [
+            "compress",
+            "thumbnail",
+            "mute",
+            "rotate-cw",
+            "speed-2x",
+            "extract-audio",
+        ] {
+            assert!(tool(&mp4, t, &opts, &|_| {})
+                .unwrap_or_else(|e| panic!("{t}: {e}"))
+                .exists());
         }
-        assert!(concat(&[mp4.clone(), mp4.clone()], &opts, &|_| {}).unwrap().exists());
-        assert!(concat(&[wav.clone(), wav.clone()], &opts, &|_| {}).unwrap().exists());
+        assert!(concat(&[mp4.clone(), mp4.clone()], &opts, &|_| {})
+            .unwrap()
+            .exists());
+        assert!(concat(&[wav.clone(), wav.clone()], &opts, &|_| {})
+            .unwrap()
+            .exists());
     }
 }
