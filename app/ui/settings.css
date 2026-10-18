@@ -68,3 +68,5 @@ input[type="range"] { width: 170px; }
 .path { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .status.ok { color: var(--ok); }
 .status.missing { color: var(--warn); }
+
+[hidden] { display: none !important; }

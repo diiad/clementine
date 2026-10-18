@@ -459,7 +459,7 @@ fn open_settings(app: &AppHandle) {
     if let Ok(w) =
         WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
             .title("Satsuma Settings")
-            .inner_size(520.0, 640.0)
+            .inner_size(520.0, 860.0)
             .resizable(false)
             .center()
             .build()
