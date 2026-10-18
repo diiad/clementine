@@ -173,7 +173,13 @@ fn on_wheel_event(app: &AppHandle, event: &WindowEvent) {
     };
     let scale = window.scale_factor().unwrap_or(2.0);
     let locate = |p: &PhysicalPosition<f64>| {
-        let l = p.to_logical::<f64>(scale);
+        // On macOS wry reports drag positions in points even though Tauri
+        // types them as physical pixels.
+        let l = if cfg!(target_os = "macos") {
+            tauri::LogicalPosition::new(p.x, p.y)
+        } else {
+            p.to_logical::<f64>(scale)
+        };
         let st = state(app);
         let s = st.session.lock().unwrap();
         wheel::hit(&s.segments, l.x, l.y)

@@ -147,7 +147,8 @@ listen("wheel:status", ({ payload }) => {
   } else {
     hub.className.baseVal = "error";
     hubTitle.textContent = "Failed";
-    hubSub.textContent = "see notification";
+    const m = payload.message.replace(/^.*?: /, "");
+    hubSub.textContent = m.length > 18 ? m.slice(0, 17) + "…" : m;
   }
 });
 

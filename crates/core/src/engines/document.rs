@@ -166,8 +166,10 @@ fn convert_into(input: &Path, title: &str, target: &str, out: &Path) -> Result<(
             Ok(())
         }
         "pdf" => {
+            let print = tmp.path().join("print.html");
+            std::fs::write(&print, flatten_for_print(&to_html(&src, tmp.path())?))?;
             let rtf = tmp.path().join("layout.rtf");
-            textutil(&src, "rtf", &rtf)?;
+            textutil(&print, "rtf", &rtf)?;
             super::pdf::from_rtf(&std::fs::read(&rtf)?, out)
         }
         "epub" => {
@@ -180,6 +182,83 @@ fn convert_into(input: &Path, title: &str, target: &str, out: &Path) -> Result<(
         }
         other => Err(anyhow::anyhow!("cannot write {other} documents").into()),
     }
+}
+
+/// CoreText draws neither list markers nor tables, which AppKit renders
+/// itself. Bake them into the text: `• item`, `3. item`, and table rows as
+/// tab-separated lines.
+fn flatten_for_print(html: &str) -> String {
+    let mut out = String::with_capacity(html.len() + 256);
+    // One entry per open list: `None` for <ul>, `Some(n)` for <ol>.
+    let mut lists: Vec<Option<u32>> = Vec::new();
+    let mut first_cell = true;
+    let mut rest = html;
+    while let Some(i) = rest.find('<') {
+        out.push_str(&rest[..i]);
+        let Some(j) = rest[i..].find('>') else {
+            out.push_str(&rest[i..]);
+            return out;
+        };
+        let tag = &rest[i..i + j + 1];
+        rest = &rest[i + j + 1..];
+        let inner = tag.trim_start_matches('<').trim_end_matches('>');
+        let closing = inner.starts_with('/');
+        let name: String = inner
+            .trim_start_matches('/')
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        match (name.as_str(), closing) {
+            ("ul", false) => lists.push(None),
+            ("ol", false) => {
+                let start = attr(inner, "start")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(1);
+                lists.push(Some(start));
+            }
+            ("ul" | "ol", true) => {
+                lists.pop();
+            }
+            ("li", false) => {
+                let indent = "\u{2003}".repeat(lists.len().saturating_sub(1));
+                let marker = match lists.last_mut() {
+                    Some(Some(n)) => {
+                        *n += 1;
+                        format!("{}. ", *n - 1)
+                    }
+                    _ => "• ".to_string(),
+                };
+                out.push_str("<p>");
+                out.push_str(&indent);
+                out.push_str(&marker);
+            }
+            ("li", true) => out.push_str("</p>"),
+            ("table" | "tbody" | "thead" | "tfoot", _) => {}
+            ("tr", false) => {
+                out.push_str("<p>");
+                first_cell = true;
+            }
+            ("tr", true) => out.push_str("</p>"),
+            ("td" | "th", false) => {
+                if !first_cell {
+                    out.push('\t');
+                }
+                first_cell = false;
+                if name == "th" {
+                    out.push_str("<b>");
+                }
+            }
+            ("td" | "th", true) => {
+                if name == "th" {
+                    out.push_str("</b>");
+                }
+            }
+            _ => out.push_str(tag),
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 fn to_html(src: &Path, tmp: &Path) -> Result<String> {
@@ -376,6 +455,18 @@ mod tests {
             .contains("paragraphe"));
         let from_pdf = from_pdf(&pdf, "docx", &opts).unwrap();
         assert!(from_pdf.exists());
+    }
+
+    #[test]
+    fn flattens_lists_and_tables() {
+        let html = "<ul><li>a</li><li>b<ol start=\"3\"><li>c</li></ol></li></ul><table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>";
+        let flat = flatten_for_print(html);
+        assert!(flat.contains("<p>• a</p>"), "{flat}");
+        assert!(flat.contains("\u{2003}3. c"), "{flat}");
+        assert!(
+            flat.contains("<p><b>A</b>\t<b>B</b></p><p>1\t2</p>"),
+            "{flat}"
+        );
     }
 
     #[test]
