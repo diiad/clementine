@@ -30,11 +30,16 @@ Launch with `cd app/src-tauri && cargo tauri dev`, or open
 - [ ] Move… shows a folder picker and moves the file.
 - [ ] Copy path, Terminal.
 
+## On-device AI (Vision)
+- [ ] ⌘-drop a photo with a clear subject on **Remove BG**: a transparent `photo-cutout.png` appears (macOS 14+ only; the slice is hidden on 13).
+- [ ] ⌘-drop a screenshot on **Extract text**, and a scanned PDF on **OCR text**: the `.txt` reads top to bottom, left to right.
+
 ## Long jobs
 - [ ] Convert a video of a minute or more to WebM: the progress ring fills and a notification appears at the end.
 - [ ] A failing job (e.g. a corrupted file) shows "Failed" with a reason.
 
 ## Settings
 - [ ] Change the keys, output folder and quality; restart the app and check they persist.
+- [ ] Click the shortcut button and press a new combination (e.g. ⌃⌥K): it is used right away. ⌫ clears it, Esc cancels, and a combination another app owns shows an error and keeps the old one.
 - [ ] Untick **Enabled**: dragging no longer opens the wheel. The tray checkbox follows.
 - [ ] **Open at login** survives a reboot.

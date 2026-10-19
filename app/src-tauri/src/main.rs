@@ -468,20 +468,18 @@ fn open_settings(app: &AppHandle) {
     }
 }
 
-fn register_shortcut(app: &AppHandle, shortcut: &str) {
+fn register_shortcut(app: &AppHandle, shortcut: &str) -> Result<(), String> {
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
     if shortcut.trim().is_empty() {
-        return;
+        return Ok(());
     }
-    let result = gs.on_shortcut(shortcut, |app, _, event| {
+    gs.on_shortcut(shortcut, |app, _, event| {
         if event.state() == ShortcutState::Pressed {
             open_for_selection(app);
         }
-    });
-    if let Err(e) = result {
-        eprintln!("could not register shortcut {shortcut}: {e}");
-    }
+    })
+    .map_err(|e| e.to_string())
 }
 
 // --- Commands ----------------------------------------------------------------------
@@ -519,14 +517,18 @@ fn get_settings(app: AppHandle) -> Settings {
 #[tauri::command]
 fn save_settings(app: AppHandle, settings: Settings) -> Result<(), String> {
     let st = state(&app);
+    let previous = st.settings.lock().unwrap().shortcut.clone();
+    if previous != settings.shortcut {
+        // Another app may own the combination: keep the old one then.
+        if let Err(e) = register_shortcut(&app, &settings.shortcut) {
+            let _ = register_shortcut(&app, &previous);
+            return Err(format!("This shortcut can't be used: {e}"));
+        }
+    }
     settings
         .save(&st.settings_path)
         .map_err(|e| e.to_string())?;
-    let shortcut_changed = st.settings.lock().unwrap().shortcut != settings.shortcut;
     *st.settings.lock().unwrap() = settings.clone();
-    if shortcut_changed {
-        register_shortcut(&app, &settings.shortcut);
-    }
     if let Some(item) = app.try_state::<CheckMenuItem<tauri::Wry>>() {
         let _ = item.set_checked(settings.enabled);
     }
@@ -723,7 +725,9 @@ fn main() {
             let handle = app.handle().clone();
             build_tray(&handle)?;
             wheel_window(&handle)?;
-            register_shortcut(&handle, &shortcut);
+            if let Err(e) = register_shortcut(&handle, &shortcut) {
+                eprintln!("could not register shortcut {shortcut}: {e}");
+            }
             let watcher_handle = handle.clone();
             watcher::spawn(move |e| on_watch_event(&watcher_handle, e));
             // `clementine-app --wheel <files…>`: open the wheel right away (handy for development).

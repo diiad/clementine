@@ -69,4 +69,7 @@ input[type="range"] { width: 170px; }
 .status.ok { color: var(--ok); }
 .status.missing { color: var(--warn); }
 
+.recorder { min-width: 170px; text-align: center; letter-spacing: 0.04em; }
+.recorder.recording { border-color: var(--accent); color: var(--accent); }
+
 [hidden] { display: none !important; }
