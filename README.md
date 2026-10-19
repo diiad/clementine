@@ -62,8 +62,8 @@ Builds aren't notarised yet. The first time you open the app, right-click it and
 ### Build from source
 
 ```sh
-git clone https://github.com/diadieudoucoure/clementine
-cd clementine
+git clone https://github.com/diiad/clementine-mac
+cd clementine-mac
 cargo install tauri-cli --version "^2" --locked
 
 # run the app in development
