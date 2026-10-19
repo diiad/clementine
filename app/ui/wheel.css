@@ -1,74 +1,92 @@
+/* Light, translucent wheel. It stays light in dark mode on purpose: it
+   floats over whatever is under the cursor, like a HUD. */
 :root {
-  --slice: rgba(30, 30, 34, 0.94);
-  --slice-stroke: rgba(255, 255, 255, 0.08);
-  --text: #f5f5f7;
-  --muted: rgba(245, 245, 247, 0.6);
-  --accent: #ff8a1f;
-  --accent-text: #1b1206;
-  --hub: rgba(18, 18, 20, 0.97);
-  --ok: #34c759;
-  --err: #ff453a;
+  --plate: rgba(236, 236, 240, 0.78);
+  --plate-line: rgba(0, 0, 0, 0.07);
+  --slice-line: rgba(0, 0, 0, 0.07);
+  --text: #1d1d1f;
+  --muted: #8a8a8e;
+  --accent: #ff5c00;
+  --ok: #2fb153;
+  --err: #e5483d;
 }
 
 html, body {
   margin: 0;
   padding: 0;
-  width: 420px;
-  height: 420px;
+  width: 300px;
+  height: 300px;
   overflow: hidden;
   background: transparent;
   user-select: none;
   -webkit-user-select: none;
   cursor: default;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 #wheel {
   display: block;
+  overflow: visible;
   opacity: 0;
-  transform: scale(0.82);
+  transform: scale(0.86);
   transform-origin: 50% 50%;
-  transition: opacity 120ms ease-out, transform 160ms cubic-bezier(0.2, 0.9, 0.3, 1.25);
+  transition: opacity 110ms ease-out, transform 170ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 #wheel.shown { opacity: 1; transform: scale(1); }
 
-.slice path {
-  fill: var(--slice);
-  stroke: var(--slice-stroke);
+#plate {
+  fill: var(--plate);
+  stroke: var(--plate-line);
   stroke-width: 1;
-  transition: fill 80ms linear;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.16)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08));
+}
+
+/* Each slice is drawn twice: a slightly wider outline, then the body. Both
+   use a thick round-joined stroke of the fill colour, which rounds the
+   corners of the (inset) annular sector. */
+.slice .edge { fill: var(--slice-line); stroke: var(--slice-line); stroke-linejoin: round; }
+.slice .body {
+  fill: url(#pillow);
+  stroke: url(#pillow);
+  stroke-linejoin: round;
+  transition: fill 70ms linear, stroke 70ms linear;
 }
 .slice text {
   fill: var(--text);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   pointer-events: none;
   dominant-baseline: middle;
 }
-.slice.convert text { font-size: 14px; letter-spacing: 0.04em; }
-.slice.small text { font-size: 11px; }
-.slice.active path { fill: var(--accent); }
-.slice.active text { fill: var(--accent-text); }
-.slice.dim path { fill: rgba(30, 30, 34, 0.7); }
+.slice.active .body { fill: url(#pillow-active); stroke: url(#pillow-active); }
+.slice.active .edge { fill: transparent; stroke: transparent; }
+.slice.active text { fill: #fff; }
+.slice.dim { opacity: 0.45; }
 
-#hub-bg { fill: var(--hub); stroke: rgba(255, 255, 255, 0.12); stroke-width: 1; transition: fill 80ms; }
-#hub.cancel #hub-bg { fill: #3a1d1b; }
-#hub-title { fill: var(--text); font-size: 13px; font-weight: 700; }
-#hub-sub { fill: var(--muted); font-size: 10px; }
+#hub-bg {
+  fill: #fff;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.14));
+  transition: fill 80ms;
+}
+#hub-title { fill: var(--text); dominant-baseline: middle; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+#hub-sub { fill: var(--muted); dominant-baseline: middle; font-size: 8px; }
+#hub.cancel #hub-title { fill: var(--muted); }
 #hub-progress {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 4;
+  stroke-width: 3;
   stroke-linecap: round;
   transform: rotate(-90deg);
-  transform-origin: 210px 210px;
+  transform-origin: 150px 150px;
   stroke-dasharray: 0 400;
   opacity: 0;
   transition: stroke-dasharray 150ms linear, opacity 120ms;
 }
 #hub.working #hub-progress { opacity: 1; }
-#hub.done #hub-bg { fill: var(--ok); }
-#hub.done #hub-title, #hub.done #hub-sub { fill: #062b12; }
+#hub.done #hub-bg { fill: var(--accent); }
+#hub.done #hub-title, #hub.done #hub-sub { fill: #fff; }
 #hub.error #hub-bg { fill: var(--err); }
-#hub.error #hub-title, #hub.error #hub-sub { fill: #2b0606; }
+#hub.error #hub-title, #hub.error #hub-sub { fill: #fff; }

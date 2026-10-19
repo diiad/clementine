@@ -6,13 +6,24 @@
   <link rel="stylesheet" href="wheel.css">
 </head>
 <body>
-  <svg id="wheel" viewBox="0 0 420 420" width="420" height="420" aria-label="Operations wheel">
+  <svg id="wheel" viewBox="0 0 300 300" width="300" height="300" aria-label="Operations wheel">
+    <defs>
+      <linearGradient id="pillow" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffffff"/>
+        <stop offset="1" stop-color="#f2f2f4"/>
+      </linearGradient>
+      <linearGradient id="pillow-active" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ff7a1a"/>
+        <stop offset="1" stop-color="#ff5c00"/>
+      </linearGradient>
+    </defs>
+    <circle id="plate" cx="150" cy="150" r="136"></circle>
     <g id="slices"></g>
     <g id="hub">
-      <circle id="hub-bg" cx="210" cy="210" r="56"></circle>
-      <circle id="hub-progress" cx="210" cy="210" r="52"></circle>
-      <text id="hub-title" x="210" y="204" text-anchor="middle"></text>
-      <text id="hub-sub" x="210" y="224" text-anchor="middle"></text>
+      <circle id="hub-bg" cx="150" cy="150" r="36"></circle>
+      <circle id="hub-progress" cx="150" cy="150" r="39"></circle>
+      <text id="hub-title" x="150" y="146" text-anchor="middle"></text>
+      <text id="hub-sub" x="150" y="160" text-anchor="middle"></text>
     </g>
   </svg>
   <script src="wheel.js"></script>

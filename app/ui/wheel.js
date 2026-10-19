@@ -3,7 +3,6 @@
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
-const C = 210;
 const NS = "http://www.w3.org/2000/svg";
 const svg = document.getElementById("wheel");
 const slicesEl = document.getElementById("slices");
@@ -18,24 +17,30 @@ const STRINGS = {
 const t = (key) => (STRINGS[state.lang] || STRINGS.en)[key];
 const CATEGORIES = ["convert", "tool", "action"];
 
-let state = { segments: [], category: "convert", title: "", clickMode: false, hub: 56, busy: false, lang: "en" };
+const C = 150; // centre, matches wheel.html and wheel::SIZE / 2
+const GAP = 2.5; // half of the space between slices
+const ROUND = 6; // corner radius
+const HUB_TEXT = 60; // usable width inside the hub
+
+let state = { segments: [], category: "convert", title: "", clickMode: false, hub: 42, busy: false, lang: "en" };
 let active = -1;
 
 const rad = (deg) => (deg * Math.PI) / 180;
 const point = (r, deg) => [C + r * Math.sin(rad(deg)), C - r * Math.cos(rad(deg))];
 
+// The sector shrunk by GAP + ROUND on every side; a round-joined stroke of
+// width 2 × ROUND then grows it back with rounded corners.
 function slicePath(s) {
-  const gap = 1.6; // px between slices
-  const full = s.end - s.start >= 359.9;
-  if (full) {
-    // A lone slice: draw an annulus.
-    return `M ${C} ${C - s.r_out} A ${s.r_out} ${s.r_out} 0 1 1 ${C - 0.01} ${C - s.r_out} Z ` +
-      `M ${C} ${C - s.r_in - gap} A ${s.r_in + gap} ${s.r_in + gap} 0 1 0 ${C + 0.01} ${C - s.r_in - gap} Z`;
+  const pad = GAP + ROUND;
+  const ri = s.r_in + pad, ro = s.r_out - pad;
+  if (s.end - s.start >= 359.9) {
+    return `M ${C} ${C - ro} A ${ro} ${ro} 0 1 1 ${C - 0.01} ${C - ro} Z ` +
+      `M ${C} ${C - ri} A ${ri} ${ri} 0 1 0 ${C + 0.01} ${C - ri} Z`;
   }
-  const ri = s.r_in + gap, ro = s.r_out;
-  const gi = (gap / ri) * (180 / Math.PI), go = (gap / ro) * (180 / Math.PI);
-  const a0o = s.start + go, a1o = s.end - go, a0i = s.start + gi, a1i = s.end - gi;
-  const large = s.end - s.start > 180 ? 1 : 0;
+  const deg = (r) => (pad / r) * (180 / Math.PI);
+  const a0o = s.start + deg(ro), a1o = s.end - deg(ro);
+  const a0i = s.start + deg(ri), a1i = s.end - deg(ri);
+  const large = a1o - a0o > 180 ? 1 : 0;
   const [x0, y0] = point(ro, a0o), [x1, y1] = point(ro, a1o);
   const [x2, y2] = point(ri, a1i), [x3, y3] = point(ri, a0i);
   return `M ${x0} ${y0} A ${ro} ${ro} 0 ${large} 1 ${x1} ${y1} L ${x2} ${y2} A ${ri} ${ri} 0 ${large} 0 ${x3} ${y3} Z`;
@@ -44,7 +49,7 @@ function slicePath(s) {
 // Long labels ("Extraire le texte") go on two lines, split at the space
 // closest to the middle.
 function splitLabel(label) {
-  if (label.length <= 10 || !label.includes(" ")) return [label];
+  if (label.length <= 9 || !label.includes(" ")) return [label];
   let best = -1;
   for (let i = 0; i < label.length; i++) {
     if (label[i] === " " && (best < 0 || Math.abs(i - label.length / 2) < Math.abs(best - label.length / 2))) best = i;
@@ -52,19 +57,39 @@ function splitLabel(label) {
   return [label.slice(0, best), label.slice(best + 1)];
 }
 
+/// Font size at which a <text> (and its tspans) fits `width`, capped at `size`.
+function fitSize(text, width, size = 10, min = 6.5) {
+  text.style.fontSize = `${size}px`;
+  const parts = text.querySelectorAll("tspan");
+  const w = Math.max(...(parts.length ? [...parts] : [text]).map((p) => p.getComputedTextLength()));
+  return w > width ? Math.max(min, (size * width) / w) : size;
+}
+
+function fit(text, width, size, min) {
+  text.style.fontSize = `${fitSize(text, width, size, min)}px`;
+}
+
 function render() {
   slicesEl.replaceChildren();
+  const sized = [];
   state.segments.forEach((s, i) => {
     const g = document.createElementNS(NS, "g");
     g.classList.add("slice", state.category);
-    if (Math.max(...splitLabel(s.label).map((l) => l.length)) > 9) g.classList.add("small");
     g.dataset.index = i;
-    const path = document.createElementNS(NS, "path");
-    path.setAttribute("d", slicePath(s));
-    path.setAttribute("fill-rule", "evenodd");
+    const d = slicePath(s);
+    for (const [cls, width] of [["edge", 2 * ROUND + 1.5], ["body", 2 * ROUND]]) {
+      const path = document.createElementNS(NS, "path");
+      path.setAttribute("class", cls);
+      path.setAttribute("d", d);
+      path.setAttribute("fill-rule", "evenodd");
+      path.setAttribute("stroke-width", width);
+      g.append(path);
+    }
     const text = document.createElementNS(NS, "text");
-    const mid = s.end - s.start >= 359.9 ? 0 : (s.start + s.end) / 2;
-    const [tx, ty] = point((s.r_in + s.r_out) / 2 + 4, mid);
+    const full = s.end - s.start >= 359.9;
+    const mid = full ? 0 : (s.start + s.end) / 2;
+    const rm = (s.r_in + s.r_out) / 2;
+    const [tx, ty] = point(rm, mid);
     text.setAttribute("x", tx);
     text.setAttribute("y", ty);
     text.setAttribute("text-anchor", "middle");
@@ -75,25 +100,50 @@ function render() {
       lines.forEach((line, k) => {
         const span = document.createElementNS(NS, "tspan");
         span.setAttribute("x", tx);
-        span.setAttribute("dy", k === 0 ? "-0.6em" : "1.2em");
+        span.setAttribute("dy", k === 0 ? "-0.55em" : "1.15em");
         span.textContent = line;
         text.append(span);
       });
     }
-    g.append(path, text);
+    g.append(text);
     g.addEventListener("click", () => pick(i));
     slicesEl.append(g);
+    // Chord of the slice at the label radius, minus the rounded padding.
+    const step = full ? 180 : Math.min(s.end - s.start, 180);
+    const chord = 2 * rm * Math.sin(rad(step / 2)) - 2 * (GAP + ROUND);
+    sized.push([text, fitSize(text, 0.86 * Math.min(chord, s.r_out - s.r_in + 20))]);
   });
+  // One size for the whole wheel, unless a label must go smaller to fit.
+  const common = Math.max(8.5, Math.min(...sized.map(([, size]) => size)));
+  for (const [text, size] of sized) text.style.fontSize = `${Math.min(common, size)}px`;
   setActive(-1);
   idleHub();
+}
+
+function hubText(title, sub = "") {
+  hubSub.textContent = sub;
+  const lines = sub ? [title] : splitLabel(title);
+  hubTitle.replaceChildren();
+  if (lines.length === 1) {
+    hubTitle.textContent = title;
+  } else {
+    lines.forEach((line, k) => {
+      const span = document.createElementNS(NS, "tspan");
+      span.setAttribute("x", C);
+      span.setAttribute("dy", k === 0 ? "-0.55em" : "1.15em");
+      span.textContent = line;
+      hubTitle.append(span);
+    });
+  }
+  fit(hubTitle, HUB_TEXT);
+  hubTitle.setAttribute("y", sub ? 146 : 150);
 }
 
 function idleHub() {
   hub.className.baseVal = "";
   hubProgress.style.strokeDasharray = "0 400";
-  hubTitle.textContent = t(state.category) || "";
-  const name = state.title.length > 16 ? state.title.slice(0, 15) + "…" : state.title;
-  hubSub.textContent = state.segments.length ? name : t("empty");
+  const name = state.title.length > 14 ? state.title.slice(0, 13) + "…" : state.title;
+  hubText(t(state.category) || "", state.segments.length ? name : t("empty"));
 }
 
 function setActive(i) {
@@ -104,9 +154,11 @@ function setActive(i) {
   if (state.busy) return;
   if (i === -2) {
     hub.className.baseVal = "cancel";
-    hubTitle.textContent = t("cancel");
-    hubSub.textContent = "";
-  } else if (hub.className.baseVal === "cancel") {
+    hubText(t("cancel"));
+  } else if (i >= 0 && state.segments[i]) {
+    hub.className.baseVal = "";
+    hubText(state.segments[i].label);
+  } else {
     idleHub();
   }
 }
@@ -161,21 +213,18 @@ listen("wheel:hover", ({ payload }) => setActive(payload));
 listen("wheel:status", ({ payload }) => {
   state.busy = payload.state === "working";
   slicesEl.querySelectorAll(".slice").forEach((g, j) => g.classList.toggle("dim", j !== active));
+  const short = (m, n) => (m.length > n ? m.slice(0, n - 1) + "…" : m);
   if (payload.state === "working") {
     hub.className.baseVal = "working";
-    hubTitle.textContent = payload.progress > 0 ? `${Math.round(payload.progress * 100)}%` : "…";
-    hubSub.textContent = payload.label;
-    const len = 2 * Math.PI * 52;
+    hubText(payload.progress > 0 ? `${Math.round(payload.progress * 100)}%` : "…", short(payload.label, 14));
+    const len = 2 * Math.PI * 39;
     hubProgress.style.strokeDasharray = `${len * payload.progress} ${len}`;
   } else if (payload.state === "done") {
     hub.className.baseVal = "done";
-    hubTitle.textContent = "✓";
-    hubSub.textContent = payload.message.length > 16 ? payload.message.slice(0, 15) + "…" : payload.message;
+    hubText("✓", short(payload.message, 14));
   } else {
     hub.className.baseVal = "error";
-    hubTitle.textContent = t("failed");
-    const m = payload.message.replace(/^.*?: /, "");
-    hubSub.textContent = m.length > 18 ? m.slice(0, 17) + "…" : m;
+    hubText(t("failed"), short(payload.message.replace(/^.*?: /, ""), 16));
   }
 });
 

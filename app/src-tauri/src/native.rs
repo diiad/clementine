@@ -23,6 +23,49 @@ pub fn make_overlay(window: &tauri::WebviewWindow) {
 #[cfg(not(target_os = "macos"))]
 pub fn make_overlay(_: &tauri::WebviewWindow) {}
 
+/// Centre the window on the mouse, kept whole on the screen under it.
+///
+/// Done in AppKit points: Tauri's physical cursor coordinates don't line up
+/// across displays with different scale factors (Retina + non-Retina), which
+/// put the wheel on the wrong screen. Must run on the main thread.
+#[cfg(target_os = "macos")]
+pub fn center_on_cursor(window: &tauri::WebviewWindow, size: f64) {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSEvent, NSScreen, NSWindow};
+    use objc2_foundation::NSPoint;
+    let (Ok(ptr), Some(mtm)) = (window.ns_window(), MainThreadMarker::new()) else {
+        return;
+    };
+    let ns: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
+    let mouse = NSEvent::mouseLocation();
+    let half = size / 2.0;
+    let (mut x, mut y) = (mouse.x - half, mouse.y - half);
+    let screens = NSScreen::screens(mtm);
+    let screen = screens.iter().find(|s| {
+        let f = s.frame();
+        mouse.x >= f.origin.x
+            && mouse.x <= f.origin.x + f.size.width
+            && mouse.y >= f.origin.y
+            && mouse.y <= f.origin.y + f.size.height
+    });
+    if let Some(screen) = screen {
+        let f = screen.frame();
+        x = x.clamp(f.origin.x, f.origin.x + f.size.width - size);
+        y = y.clamp(f.origin.y, f.origin.y + f.size.height - size);
+    }
+    ns.setFrameOrigin(NSPoint::new(x, y));
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn center_on_cursor(window: &tauri::WebviewWindow, size: f64) {
+    if let Ok(c) = window.cursor_position() {
+        let _ = window.set_position(tauri::PhysicalPosition::new(
+            c.x - size / 2.0,
+            c.y - size / 2.0,
+        ));
+    }
+}
+
 /// wry always answers drags with `NSDragOperationCopy`. While ⌘ is held,
 /// Finder only offers `Move`, so the drop would be refused, and ⌘ is the
 /// default Tools key. Wrap wry's `draggingEntered:` / `draggingUpdated:` to

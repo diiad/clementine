@@ -52,6 +52,7 @@ struct ShowPayload {
     segments: Vec<Segment>,
     click_mode: bool,
     hub: f64,
+    size: f64,
     lang: Lang,
 }
 
@@ -131,6 +132,7 @@ fn open_wheel(app: &AppHandle, paths: Vec<PathBuf>, category: Category, click_mo
         segments: segments.clone(),
         click_mode,
         hub: wheel::HUB,
+        size: wheel::SIZE,
     };
     let was_visible = s.visible;
     *s = Session {
@@ -144,16 +146,7 @@ fn open_wheel(app: &AppHandle, paths: Vec<PathBuf>, category: Category, click_mo
     };
     drop(s);
     if !was_visible {
-        if let Ok(cursor) = app.cursor_position() {
-            let scale = app
-                .monitor_from_point(cursor.x, cursor.y)
-                .ok()
-                .flatten()
-                .map(|m| m.scale_factor())
-                .unwrap_or(2.0);
-            let half = wheel::SIZE * scale / 2.0;
-            let _ = window.set_position(PhysicalPosition::new(cursor.x - half, cursor.y - half));
-        }
+        native::center_on_cursor(&window, wheel::SIZE);
     }
     let _ = window.emit("wheel:show", payload);
     let _ = window.show();

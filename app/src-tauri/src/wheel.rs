@@ -5,12 +5,12 @@ use clementine_core::Operation;
 use serde::Serialize;
 
 /// Window edge, in logical pixels.
-pub const SIZE: f64 = 420.0;
+pub const SIZE: f64 = 300.0;
 const CENTER: f64 = SIZE / 2.0;
 /// Inside this radius is the cancel / status hub.
-pub const HUB: f64 = 58.0;
-const OUTER: f64 = 200.0;
-const SPLIT: f64 = 124.0;
+pub const HUB: f64 = 42.0;
+const OUTER: f64 = 130.0;
+const SPLIT: f64 = 88.0;
 /// More operations than this use two rings.
 const ONE_RING_MAX: usize = 12;
 
@@ -101,12 +101,12 @@ mod tests {
     fn hit_test_matches_layout() {
         let segs = layout(&ops(4));
         // Straight up is segment 0, right is 1, down is 2, left is 3.
-        assert_eq!(hit(&segs, CENTER, CENTER - 150.0), Hit::Segment(0));
-        assert_eq!(hit(&segs, CENTER + 150.0, CENTER), Hit::Segment(1));
-        assert_eq!(hit(&segs, CENTER, CENTER + 150.0), Hit::Segment(2));
-        assert_eq!(hit(&segs, CENTER - 150.0, CENTER), Hit::Segment(3));
+        assert_eq!(hit(&segs, CENTER, CENTER - 100.0), Hit::Segment(0));
+        assert_eq!(hit(&segs, CENTER + 100.0, CENTER), Hit::Segment(1));
+        assert_eq!(hit(&segs, CENTER, CENTER + 100.0), Hit::Segment(2));
+        assert_eq!(hit(&segs, CENTER - 100.0, CENTER), Hit::Segment(3));
         // Segment 0 spans -45°..45°, so slightly left of top is still 0.
-        assert_eq!(hit(&segs, CENTER - 20.0, CENTER - 150.0), Hit::Segment(0));
+        assert_eq!(hit(&segs, CENTER - 15.0, CENTER - 100.0), Hit::Segment(0));
         assert_eq!(hit(&segs, CENTER, CENTER), Hit::Hub);
         assert_eq!(hit(&segs, 1.0, 1.0), Hit::Outside);
     }
@@ -116,9 +116,9 @@ mod tests {
         let segs = layout(&ops(15));
         assert_eq!(segs.len(), 15);
         assert_eq!(segs.iter().filter(|s| s.r_out == SPLIT).count(), 6);
-        assert!(matches!(hit(&segs, CENTER, CENTER - 90.0), Hit::Segment(0)));
+        assert!(matches!(hit(&segs, CENTER, CENTER - 65.0), Hit::Segment(0)));
         assert!(matches!(
-            hit(&segs, CENTER, CENTER - 160.0),
+            hit(&segs, CENTER, CENTER - 110.0),
             Hit::Segment(6)
         ));
     }
