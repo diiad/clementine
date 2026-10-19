@@ -803,6 +803,12 @@ async fn check_update(app: AppHandle) -> Result<Option<String>, String> {
     updater::check(&app).await
 }
 
+/// Relaunch, for an engine that only shows up in a fresh process.
+#[tauri::command]
+fn restart_app(app: AppHandle) {
+    app.restart();
+}
+
 /// Install ffmpeg or LibreOffice from the Settings page.
 #[tauri::command]
 async fn install_engine(name: String) -> Result<install::Outcome, String> {
@@ -1014,6 +1020,7 @@ fn main() {
             engine_status,
             install_engine,
             check_update,
+            restart_app,
             set_autostart,
             float_items,
             float_drag,

@@ -80,6 +80,8 @@ const WINDOWS_TEXT = {
     "Click, then press the new shortcut. Backspace clears it, Esc cancels.",
 };
 Object.assign(FR, {
+  "Restart": "Redémarrer",
+  "Installed. Restart Clémentine to use it.": "Installé. Redémarrez Clémentine pour l’utiliser.",
   "Check for updates automatically": "Rechercher les mises à jour automatiquement",
   "Check now": "Vérifier",
   "Checking…": "Vérification…",
@@ -334,16 +336,24 @@ for (const id of ["ffmpeg", "libreoffice"]) {
     installing.delete(id);
     button.disabled = false;
     button.textContent = t("Install");
-    refreshEngines();
+    const engines = await refreshEngines();
+    // Installed but not visible to this process yet: offer a restart.
+    if (!$("install-error").hidden || engines[id]) return;
+    $("restart-note").textContent = t("Installed. Restart Clémentine to use it.");
+    $("restart-row").hidden = false;
   });
 }
 
+$("restart").addEventListener("click", () => invoke("restart_app"));
+
 async function refreshEngines() {
   const engines = await invoke("engine_status");
+  if (engines.ffmpeg && engines.libreoffice) $("restart-row").hidden = true;
   status("ffmpeg", engines.ffmpeg);
   status("libreoffice", engines.libreoffice);
   $("autostart").checked = engines.autostart;
   $("version").textContent = `${t("Version")} ${engines.version} · ${t("MIT licensed")}`;
+  return engines;
 }
 
 (async () => {

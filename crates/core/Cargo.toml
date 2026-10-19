@@ -41,4 +41,5 @@ objc2-core-foundation = { version = "0.3", features = ["CFURL", "CFString", "CFC
 
 # PDF on Windows: PDFium (pdfium.dll ships next to the app).
 [target.'cfg(windows)'.dependencies]
+winreg = "0.55"
 pdfium-render = { version = "0.9", default-features = false, features = ["pdfium_latest", "image_025", "thread_safe"] }

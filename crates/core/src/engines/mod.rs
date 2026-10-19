@@ -15,6 +15,18 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn expands_env_vars() {
+        std::env::set_var("CLEMENTINE_TEST_DIR", "C:\\Tools");
+        assert_eq!(
+            super::expand_env("%CLEMENTINE_TEST_DIR%\\bin;%NOPE_UNSET%;50%"),
+            "C:\\Tools\\bin;%NOPE_UNSET%;50%"
+        );
+    }
+}
+
 /// A command for a console tool. On Windows it runs without flashing a
 /// console window over the desktop.
 pub fn command(program: impl AsRef<OsStr>) -> Command {
@@ -117,6 +129,70 @@ pub fn find_tool(name: &str) -> Option<PathBuf> {
         .into_iter()
         .find(|p| p.is_file())
         .or_else(|| which::which(name).ok())
+        .or_else(|| which_in_fresh_path(name))
+}
+
+/// Installers (winget) add folders to the user's `Path` in the registry, but
+/// a running process keeps the `Path` it started with: read the current one.
+#[cfg(windows)]
+fn which_in_fresh_path(name: &str) -> Option<PathBuf> {
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+    let read = |root, key: &str| -> Option<String> {
+        RegKey::predef(root)
+            .open_subkey(key)
+            .ok()?
+            .get_value("Path")
+            .ok()
+    };
+    let system = read(
+        HKEY_LOCAL_MACHINE,
+        r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+    );
+    let user = read(HKEY_CURRENT_USER, "Environment");
+    let path = [system, user]
+        .into_iter()
+        .flatten()
+        .map(|p| expand_env(&p))
+        .collect::<Vec<_>>()
+        .join(";");
+    which::which_in(name, Some(path), std::env::temp_dir()).ok()
+}
+
+#[cfg(not(windows))]
+fn which_in_fresh_path(_name: &str) -> Option<PathBuf> {
+    None
+}
+
+/// Expand `%VAR%` references, as in `REG_EXPAND_SZ` values.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn expand_env(s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(start) = rest.find('%') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        match after.find('%') {
+            Some(end) => {
+                let var = &after[..end];
+                match std::env::var(var) {
+                    Ok(v) if !var.is_empty() => out.push_str(&v),
+                    _ => {
+                        out.push('%');
+                        out.push_str(var);
+                        out.push('%');
+                    }
+                }
+                rest = &after[end + 1..];
+            }
+            None => {
+                out.push('%');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Scratch directory that is removed when dropped.
