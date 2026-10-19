@@ -1,6 +1,10 @@
 //! Clémentine: a menu-bar app. Drag a file, hold a key, and a wheel of
 //! conversions, tools or actions opens under the cursor; drop on a slice.
 
+// A GUI app on Windows: no console window behind it (kept in debug builds
+// for the logs).
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod i18n;
 mod install;
 mod native;
