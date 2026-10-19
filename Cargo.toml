@@ -6,7 +6,7 @@ members = ["crates/core", "crates/cli", "app/src-tauri"]
 version = "0.2.1"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/diiad/clementine-mac"
+repository = "https://github.com/diiad/clementine"
 authors = ["Diadieu Doucoure"]
 
 [workspace.dependencies]

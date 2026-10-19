@@ -43,7 +43,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI0N0VDQUJGRkY4NUYxM0QKUldROThZWC92OHArSkFxZFRxdEc2V3I5RG9XOUs3T0haYWtwOTBnV1FkcXNPSTducXd2aFRZWVcK",
       "endpoints": [
-        "https://github.com/diiad/clementine-mac/releases/download/updater/{{target}}-{{arch}}.json"
+        "https://github.com/diiad/clementine/releases/download/updater/{{target}}-{{arch}}.json"
       ],
       "windows": {
         "installMode": "passive"

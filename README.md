@@ -91,8 +91,8 @@ Both apps check for a new version at launch and every 6 hours, and ask before in
 ### Build from source
 
 ```sh
-git clone https://github.com/diiad/clementine-mac
-cd clementine-mac
+git clone https://github.com/diiad/clementine
+cd clementine
 cargo install tauri-cli --version "^2" --locked
 
 # run the app in development
