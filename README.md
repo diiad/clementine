@@ -53,12 +53,22 @@ Any file or folder can also be zipped.
 
 **Requirements:** macOS 13 or later. Development so far has been on Apple silicon.
 
+**With Homebrew** (recommended):
+
+```sh
+brew install --cask diiad/tap/clementine
+brew install ffmpeg                         # audio and video
+brew install --cask libreoffice             # optional: slides, better documents
+```
+
+The command-line tool alone: `brew install diiad/tap/clementine-cli`.
+
+**Or by hand:**
+
 1. Download the latest `.dmg` from [Releases](../../releases) and drag **Clémentine** to Applications.
    The app isn't notarized yet: the first time, right-click it in Applications and choose **Open** (or run `xattr -dr com.apple.quarantine /Applications/Clémentine.app`).
 2. Install ffmpeg for audio and video: `brew install ffmpeg`.
 3. Optional: install [LibreOffice](https://www.libreoffice.org/) (`brew install --cask libreoffice`) for slides, spreadsheet → PDF, and higher-fidelity documents: DOCX/ODT/PDF output is then laid out by LibreOffice Writer (real tables, lists, images) instead of textutil + CoreText.
-
-Builds aren't notarised yet. The first time you open the app, right-click it and choose **Open**.
 
 ### Windows (preview)
 
