@@ -41,12 +41,23 @@ function slicePath(s) {
   return `M ${x0} ${y0} A ${ro} ${ro} 0 ${large} 1 ${x1} ${y1} L ${x2} ${y2} A ${ri} ${ri} 0 ${large} 0 ${x3} ${y3} Z`;
 }
 
+// Long labels ("Extraire le texte") go on two lines, split at the space
+// closest to the middle.
+function splitLabel(label) {
+  if (label.length <= 10 || !label.includes(" ")) return [label];
+  let best = -1;
+  for (let i = 0; i < label.length; i++) {
+    if (label[i] === " " && (best < 0 || Math.abs(i - label.length / 2) < Math.abs(best - label.length / 2))) best = i;
+  }
+  return [label.slice(0, best), label.slice(best + 1)];
+}
+
 function render() {
   slicesEl.replaceChildren();
   state.segments.forEach((s, i) => {
     const g = document.createElementNS(NS, "g");
     g.classList.add("slice", state.category);
-    if (s.label.length > 11) g.classList.add("small");
+    if (Math.max(...splitLabel(s.label).map((l) => l.length)) > 9) g.classList.add("small");
     g.dataset.index = i;
     const path = document.createElementNS(NS, "path");
     path.setAttribute("d", slicePath(s));
@@ -57,7 +68,18 @@ function render() {
     text.setAttribute("x", tx);
     text.setAttribute("y", ty);
     text.setAttribute("text-anchor", "middle");
-    text.textContent = s.label;
+    const lines = splitLabel(s.label);
+    if (lines.length === 1) {
+      text.textContent = s.label;
+    } else {
+      lines.forEach((line, k) => {
+        const span = document.createElementNS(NS, "tspan");
+        span.setAttribute("x", tx);
+        span.setAttribute("dy", k === 0 ? "-0.6em" : "1.2em");
+        span.textContent = line;
+        text.append(span);
+      });
+    }
     g.append(path, text);
     g.addEventListener("click", () => pick(i));
     slicesEl.append(g);
