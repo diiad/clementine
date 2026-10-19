@@ -80,6 +80,13 @@ const WINDOWS_TEXT = {
     "Click, then press the new shortcut. Backspace clears it, Esc cancels.",
 };
 Object.assign(FR, {
+  "Install": "Installer",
+  "Installing…": "Installation…",
+  "Installation failed:": "Échec de l’installation :",
+  "winget is missing: the download page opened in your browser.":
+    "winget est absent : la page de téléchargement s’est ouverte dans le navigateur.",
+  "Homebrew is missing: the download page opened in your browser.":
+    "Homebrew est absent : la page de téléchargement s’est ouverte dans le navigateur.",
   "Drag a file, hold a key, drop it on the wheel. Everything runs on this PC.":
     "Glissez un fichier, maintenez une touche, lâchez-le sur la roue. Tout se passe sur ce PC.",
   "Hold one of these while dragging files from the desktop or File Explorer.":
@@ -270,11 +277,42 @@ $("choose").addEventListener("click", async () => {
 
 $("autostart").addEventListener("change", (e) => invoke("set_autostart", { enabled: e.target.checked }));
 
+const installing = new Set();
+
 function status(id, path) {
   const el = $(id);
   el.textContent = t(path ? "Found" : "Not installed");
   el.title = path || "";
   el.className = "status " + (path ? "ok" : "missing");
+  if (!installing.has(id)) $(`install-${id}`).hidden = !!path;
+}
+
+for (const id of ["ffmpeg", "libreoffice"]) {
+  const button = $(`install-${id}`);
+  button.addEventListener("click", async () => {
+    installing.add(id);
+    button.disabled = true;
+    button.textContent = t("Installing…");
+    $("install-error").hidden = true;
+    try {
+      const outcome = await invoke("install_engine", { name: id });
+      if (outcome === "opened") {
+        $("install-error").textContent = t(
+          platform === "windows"
+            ? "winget is missing: the download page opened in your browser."
+            : "Homebrew is missing: the download page opened in your browser.",
+        );
+        $("install-error").hidden = false;
+      }
+    } catch (e) {
+      $("install-error").textContent = `${t("Installation failed:")} ${e}`;
+      $("install-error").hidden = false;
+    }
+    installing.delete(id);
+    button.disabled = false;
+    button.textContent = t("Install");
+    refreshEngines();
+  });
 }
 
 async function refreshEngines() {

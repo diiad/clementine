@@ -2,6 +2,7 @@
 //! conversions, tools or actions opens under the cursor; drop on a slice.
 
 mod i18n;
+mod install;
 mod native;
 mod settings;
 mod watcher;
@@ -791,6 +792,15 @@ fn engine_status(app: AppHandle) -> Engines {
     }
 }
 
+/// Install ffmpeg or LibreOffice from the Settings page.
+#[tauri::command]
+async fn install_engine(name: String) -> Result<install::Outcome, String> {
+    let engine = install::Engine::parse(&name).ok_or("unknown engine")?;
+    tauri::async_runtime::spawn_blocking(move || install::install(engine))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
     let al = app.autolaunch();
@@ -990,6 +1000,7 @@ fn main() {
             ui_language,
             choose_folder,
             engine_status,
+            install_engine,
             set_autostart,
             float_items,
             float_drag,

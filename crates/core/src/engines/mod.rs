@@ -15,6 +15,20 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// A command for a console tool. On Windows it runs without flashing a
+/// console window over the desktop.
+pub fn command(program: impl AsRef<OsStr>) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 /// Run an external program and turn a non-zero exit into a readable error.
 pub(crate) fn exec<I, S>(program: impl AsRef<OsStr>, args: I) -> Result<std::process::Output>
 where
@@ -27,7 +41,7 @@ where
         .unwrap_or(program)
         .to_string_lossy()
         .into_owned();
-    let out = Command::new(program)
+    let out = command(program)
         .args(args)
         .output()
         .map_err(|e| Error::ToolFailed {

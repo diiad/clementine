@@ -5,7 +5,7 @@ use crate::kind::{detect, ext, Kind};
 use crate::{output_path, Error, Options, Progress, Result};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 const HINT: &str = if cfg!(windows) {
     "Install it with `winget install Gyan.FFmpeg`, or set CLEMENTINE_FFMPEG."
@@ -19,7 +19,7 @@ fn ffmpeg() -> Result<PathBuf> {
 
 /// Duration in seconds, read from ffmpeg's banner (avoids requiring ffprobe).
 pub fn duration(input: &Path) -> Option<f64> {
-    let out = Command::new(ffmpeg().ok()?)
+    let out = super::command(ffmpeg().ok()?)
         .args(["-hide_banner", "-i"])
         .arg(input)
         .output()
@@ -48,7 +48,7 @@ fn parse_timestamp(s: &str) -> Option<f64> {
 /// Run ffmpeg with `args` (inputs and filters, not the output) writing `out`,
 /// reporting progress against `total` seconds.
 fn run_ffmpeg(args: &[String], out: &Path, total: Option<f64>, progress: Progress) -> Result<()> {
-    let mut cmd = Command::new(ffmpeg()?);
+    let mut cmd = super::command(ffmpeg()?);
     cmd.args([
         "-hide_banner",
         "-nostdin",
@@ -211,7 +211,7 @@ fn crf_for(quality: u8) -> u8 {
 
 fn is_h264_aac(input: &Path) -> bool {
     let Ok(ff) = ffmpeg() else { return false };
-    let Ok(out) = Command::new(ff)
+    let Ok(out) = super::command(ff)
         .args(["-hide_banner", "-i"])
         .arg(input)
         .output()
@@ -418,7 +418,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let wav = dir.path().join("tone.wav");
         let mp4 = dir.path().join("clip.mkv");
-        assert!(Command::new(&ff)
+        assert!(std::process::Command::new(&ff)
             .args([
                 "-y",
                 "-loglevel",
@@ -432,7 +432,7 @@ mod tests {
             .status()
             .unwrap()
             .success());
-        assert!(Command::new(&ff)
+        assert!(std::process::Command::new(&ff)
             .args([
                 "-y",
                 "-loglevel",

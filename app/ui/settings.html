@@ -75,8 +75,9 @@
 
   <section>
     <h2>Engines</h2>
-    <div class="row"><span>ffmpeg (audio &amp; video)</span><span id="ffmpeg" class="status"></span></div>
-    <div class="row"><span>LibreOffice (slides, better Office → PDF)</span><span id="libreoffice" class="status"></span></div>
+    <div class="row"><span>ffmpeg (audio &amp; video)</span><span class="engine"><span id="ffmpeg" class="status"></span><button id="install-ffmpeg" class="install" hidden>Install</button></span></div>
+    <div class="row"><span>LibreOffice (slides, better Office → PDF)</span><span class="engine"><span id="libreoffice" class="status"></span><button id="install-libreoffice" class="install" hidden>Install</button></span></div>
+    <p id="install-error" class="warning small" hidden></p>
     <p class="muted small" id="version"></p>
   </section>
 
