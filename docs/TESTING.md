@@ -15,7 +15,9 @@ Launch with `cd app/src-tauri && cargo tauri dev`, or open
 - [ ] Drag without any key: no wheel.
 - [ ] Drag text or a link (not a file) with ⇧: no wheel.
 - [ ] Hold **⌘** until the drop (Finder only allows *Move* then): the drop is still accepted.
-- [ ] Retina and non-Retina screens: the highlighted slice matches the cursor.
+- [ ] Retina and non-Retina screens: the wheel opens under the cursor on either screen, and the highlighted slice matches it.
+- [ ] Moving onto another slice ticks the trackpad (Force Touch trackpad, **Haptic feedback** on in Settings).
+- [ ] Switch macOS between Light and Dark: the wheel follows.
 - [ ] A full-screen app and another Space: the wheel appears above them.
 
 ## Click / keyboard mode

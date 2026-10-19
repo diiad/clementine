@@ -1,15 +1,40 @@
-/* Light, translucent wheel. It stays light in dark mode on purpose: it
-   floats over whatever is under the cursor, like a HUD. */
+/* Translucent wheel that follows the macOS appearance. */
 :root {
-  --plate: rgba(236, 236, 240, 0.78);
-  --plate-line: rgba(0, 0, 0, 0.07);
-  --slice-line: rgba(0, 0, 0, 0.07);
+  --plate: rgba(240, 240, 244, 0.5);
+  --plate-line: rgba(0, 0, 0, 0.06);
+  /* Opaque colours: translucency comes from --slice-alpha on the whole
+     shape, so the overlapping outline/body layers don't show through. */
+  --pillow-top: #ffffff;
+  --pillow-bottom: #f4f4f7;
+  --slice-line: #dcdce0;
+  --slice-alpha: 0.72;
+  --hub: rgba(255, 255, 255, 0.92);
   --text: #1d1d1f;
-  --muted: #8a8a8e;
+  --muted: #86868b;
+  --accent-top: #ff7a1a;
+  --accent-bottom: #ff5c00;
   --accent: #ff5c00;
-  --ok: #2fb153;
+  --shadow: rgba(0, 0, 0, 0.14);
   --err: #e5483d;
 }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --plate: rgba(28, 28, 31, 0.48);
+    --plate-line: rgba(255, 255, 255, 0.08);
+    --pillow-top: #4a4a50;
+    --pillow-bottom: #3a3a3f;
+    --slice-line: #57575d;
+    --slice-alpha: 0.7;
+    --hub: rgba(40, 40, 44, 0.94);
+    --text: #f2f2f7;
+    --muted: #98989f;
+    --shadow: rgba(0, 0, 0, 0.4);
+  }
+}
+.pillow-top { stop-color: var(--pillow-top); }
+.pillow-bottom { stop-color: var(--pillow-bottom); }
+.accent-top { stop-color: var(--accent-top); }
+.accent-bottom { stop-color: var(--accent-bottom); }
 
 html, body {
   margin: 0;
@@ -39,12 +64,14 @@ html, body {
   fill: var(--plate);
   stroke: var(--plate-line);
   stroke-width: 1;
-  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.16)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08));
+  filter: drop-shadow(0 6px 14px var(--shadow)) drop-shadow(0 1px 2px var(--shadow));
 }
 
 /* Each slice is drawn twice: a slightly wider outline, then the body. Both
    use a thick round-joined stroke of the fill colour, which rounds the
    corners of the (inset) annular sector. */
+.slice .shape { opacity: var(--slice-alpha); transition: opacity 70ms linear; }
+.slice.active .shape { opacity: 1; }
 .slice .edge { fill: var(--slice-line); stroke: var(--slice-line); stroke-linejoin: round; }
 .slice .body {
   fill: url(#pillow);
@@ -67,8 +94,8 @@ html, body {
 .slice.dim { opacity: 0.45; }
 
 #hub-bg {
-  fill: #fff;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.14));
+  fill: var(--hub);
+  filter: drop-shadow(0 1px 3px var(--shadow));
   transition: fill 80ms;
 }
 #hub-title { fill: var(--text); dominant-baseline: middle; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }

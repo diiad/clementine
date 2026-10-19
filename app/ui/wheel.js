@@ -77,14 +77,17 @@ function render() {
     g.classList.add("slice", state.category);
     g.dataset.index = i;
     const d = slicePath(s);
+    const shape = document.createElementNS(NS, "g");
+    shape.setAttribute("class", "shape");
     for (const [cls, width] of [["edge", 2 * ROUND + 1.5], ["body", 2 * ROUND]]) {
       const path = document.createElementNS(NS, "path");
       path.setAttribute("class", cls);
       path.setAttribute("d", d);
       path.setAttribute("fill-rule", "evenodd");
       path.setAttribute("stroke-width", width);
-      g.append(path);
+      shape.append(path);
     }
+    g.append(shape);
     const text = document.createElementNS(NS, "text");
     const full = s.end - s.start >= 359.9;
     const mid = full ? 0 : (s.start + s.end) / 2;
@@ -163,6 +166,13 @@ function setActive(i) {
   }
 }
 
+// Highlight moved by the user in click mode: also tick the trackpad.
+function userActive(i) {
+  if (i === active) return;
+  setActive(i);
+  invoke("wheel_hover", { index: i });
+}
+
 function hitTest(x, y) {
   const dx = x - C, dy = y - C;
   const r = Math.hypot(dx, dy);
@@ -231,7 +241,7 @@ listen("wheel:status", ({ payload }) => {
 // --- Click mode: mouse and keyboard ------------------------------------------
 
 document.addEventListener("mousemove", (e) => {
-  if (state.clickMode && !state.busy) setActive(hitTest(e.clientX, e.clientY));
+  if (state.clickMode && !state.busy) userActive(hitTest(e.clientX, e.clientY));
 });
 
 document.addEventListener("mousedown", (e) => {
@@ -255,8 +265,8 @@ document.addEventListener("keydown", (e) => {
   const n = state.segments.length;
   switch (e.key) {
     case "Escape": close(); break;
-    case "ArrowRight": case "ArrowDown": if (n) setActive(active < 0 ? 0 : (active + 1) % n); break;
-    case "ArrowLeft": case "ArrowUp": if (n) setActive(active < 0 ? n - 1 : (active - 1 + n) % n); break;
+    case "ArrowRight": case "ArrowDown": if (n) userActive(active < 0 ? 0 : (active + 1) % n); break;
+    case "ArrowLeft": case "ArrowUp": if (n) userActive(active < 0 ? n - 1 : (active - 1 + n) % n); break;
     case "Enter": case " ": if (active >= 0) pick(active); break;
     case "Tab": e.preventDefault(); switchCategory(e.shiftKey ? -1 : 1); break;
     case "1": case "2": case "3": invoke("wheel_category", { category: CATEGORIES[+e.key - 1] }); break;

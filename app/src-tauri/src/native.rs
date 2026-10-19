@@ -141,6 +141,23 @@ pub fn accept_any_drag_operation() {
 #[cfg(not(target_os = "macos"))]
 pub fn accept_any_drag_operation() {}
 
+/// A light trackpad tick, as when snapping to a guide. macOS only plays it
+/// while a finger is on a Force Touch trackpad, which is the case mid-drag.
+#[cfg(target_os = "macos")]
+pub fn haptic() {
+    use objc2_app_kit::{
+        NSHapticFeedbackManager, NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime,
+        NSHapticFeedbackPerformer,
+    };
+    NSHapticFeedbackManager::defaultPerformer().performFeedbackPattern_performanceTime(
+        NSHapticFeedbackPattern::Alignment,
+        NSHapticFeedbackPerformanceTime::Now,
+    );
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn haptic() {}
+
 /// Open the AirDrop sheet for `paths`. Must run on the main thread.
 #[cfg(target_os = "macos")]
 pub fn airdrop(paths: &[PathBuf]) -> anyhow::Result<()> {

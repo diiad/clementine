@@ -31,6 +31,8 @@ pub struct Settings {
     /// Global shortcut that opens the wheel for the Finder selection.
     pub shortcut: String,
     pub language: Language,
+    /// Tick the trackpad when the pointer moves onto another slice.
+    pub haptics: bool,
 }
 
 impl Default for Settings {
@@ -48,6 +50,7 @@ impl Default for Settings {
             notify: true,
             shortcut: "Alt+Super+KeyT".into(),
             language: Language::System,
+            haptics: true,
         }
     }
 }

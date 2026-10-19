@@ -35,6 +35,7 @@ const FR = {
   "PDF & SVG resolution": "Résolution PDF et SVG",
   "Reveal results in Finder": "Afficher les résultats dans le Finder",
   "Notify when long jobs finish": "Notifier à la fin des tâches longues",
+  "Haptic feedback on the trackpad": "Retour haptique sur le trackpad",
   "General": "Général",
   "Enabled": "Activé",
   "Open at login": "Ouvrir au démarrage",
@@ -82,7 +83,7 @@ function fill() {
   $("dpi").value = String(settings.dpi);
   $("quality").value = settings.quality;
   $("quality-val").textContent = settings.quality;
-  for (const id of ["enabled", "reveal_after", "notify"]) $(id).checked = settings[id];
+  for (const id of ["enabled", "reveal_after", "notify", "haptics"]) $(id).checked = settings[id];
   $("custom_dir").textContent = settings.custom_dir || t("No folder chosen");
   $("language").value = settings.language;
   $("custom-row").hidden = settings.output !== "custom";
@@ -182,6 +183,7 @@ bind("quality", (el) => Number(el.value));
 bind("enabled", (el) => el.checked);
 bind("reveal_after", (el) => el.checked);
 bind("notify", (el) => el.checked);
+bind("haptics", (el) => el.checked);
 $("language").addEventListener("change", async (e) => {
   settings.language = e.target.value;
   await save();

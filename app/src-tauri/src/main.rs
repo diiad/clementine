@@ -12,6 +12,7 @@ use i18n::{tr, Lang};
 use serde::Serialize;
 use settings::Settings;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
@@ -66,6 +67,19 @@ enum Status {
 
 fn state(app: &AppHandle) -> tauri::State<'_, AppState> {
     app.state::<AppState>()
+}
+
+/// Slice under the pointer during a drag (-1 none, -2 hub), to tick the
+/// trackpad only when it changes.
+static HOVER: AtomicI64 = AtomicI64::new(-1);
+
+fn hover_changed(app: &AppHandle, index: i64) {
+    if HOVER.swap(index, Ordering::Relaxed) != index
+        && index >= 0
+        && state(app).settings.lock().unwrap().haptics
+    {
+        native::haptic();
+    }
 }
 
 fn lang(app: &AppHandle) -> Lang {
@@ -148,6 +162,7 @@ fn open_wheel(app: &AppHandle, paths: Vec<PathBuf>, category: Category, click_mo
     if !was_visible {
         native::center_on_cursor(&window, wheel::SIZE);
     }
+    HOVER.store(-1, Ordering::Relaxed);
     let _ = window.emit("wheel:show", payload);
     let _ = window.show();
     if click_mode {
@@ -196,9 +211,11 @@ fn on_wheel_event(app: &AppHandle, event: &WindowEvent) {
                 Hit::Hub => -2,
                 Hit::Outside => -1,
             };
+            hover_changed(app, index);
             let _ = window.emit("wheel:hover", index);
         }
         DragDropEvent::Leave => {
+            HOVER.store(-1, Ordering::Relaxed);
             let _ = window.emit("wheel:hover", -1);
         }
         DragDropEvent::Drop { paths, position } => match locate(position) {
@@ -520,6 +537,12 @@ fn wheel_category(app: AppHandle, category: Category) {
     }
 }
 
+/// Click mode: the page moved the highlight with the mouse or keyboard.
+#[tauri::command]
+fn wheel_hover(app: AppHandle, index: i64) {
+    hover_changed(&app, index);
+}
+
 #[tauri::command]
 fn wheel_close(app: AppHandle) {
     if !state(&app).session.lock().unwrap().busy {
@@ -775,6 +798,7 @@ fn main() {
             wheel_pick,
             wheel_category,
             wheel_close,
+            wheel_hover,
             get_settings,
             save_settings,
             ui_language,
