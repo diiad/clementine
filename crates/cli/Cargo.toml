@@ -1,16 +1,16 @@
 [package]
-name = "satsuma-cli"
-description = "Command-line front end for the Satsuma conversion engine"
+name = "clementine-cli"
+description = "Command-line front end for the Clémentine conversion engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "satsuma"
+name = "clementine"
 path = "src/main.rs"
 
 [dependencies]
-satsuma-core.workspace = true
+clementine-core.workspace = true
 anyhow.workspace = true
 clap = { version = "4", features = ["derive"] }
 serde_json.workspace = true

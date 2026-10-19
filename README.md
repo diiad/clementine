@@ -1,13 +1,13 @@
-<p align="center"><img src="assets/logo.png" width="128" alt="Satsuma logo"></p>
+<p align="center"><img src="assets/logo.png" width="128" alt="Clémentine logo"></p>
 
-<h1 align="center">Satsuma</h1>
+<h1 align="center">Clémentine</h1>
 
 <p align="center"><b>Drag a file. Hold a key. Drop it on the wheel.</b><br>
 An open-source, offline file converter for macOS, written in Rust.</p>
 
 ---
 
-Satsuma lives in the menu bar. Start dragging any file, from Finder or any other app, and hold a key. A wheel opens under the cursor:
+Clémentine lives in the menu bar. Start dragging any file, from Finder or any other app, and hold a key. A wheel opens under the cursor:
 
 | Hold | Wheel | Examples |
 |---|---|---|
@@ -19,7 +19,7 @@ Drop the file on a slice and the result appears next to the original. You can le
 
 Nothing is uploaded. Conversions run on your Mac, using Rust crates, macOS's own frameworks and ffmpeg.
 
-> Satsuma is an independent project inspired by the drag-and-hold workflow of [Tangerine for Mac](https://tangerineformac.com/). It isn't affiliated with Tangerine and shares no code with it.
+> Clémentine is an independent project inspired by the drag-and-hold workflow of [Tangerine for Mac](https://tangerineformac.com/). It isn't affiliated with Tangerine and shares no code with it.
 
 ## Features
 
@@ -28,7 +28,7 @@ Nothing is uploaded. Conversions run on your Mac, using Rust crates, macOS's own
 - **Multiple files**: the wheel shows only the conversions that apply to every selected file, plus merge tools when they make sense.
 - **Float shelf**: park files in a small always-on-top window and drag them out later.
 - **Settings**: choose the trigger keys, where results go (next to the original, Downloads or a folder you pick), quality, PDF/SVG resolution and launch at login.
-- **CLI**: the same engine runs from the command line as `satsuma`.
+- **CLI**: the same engine runs from the command line as `clementine`.
 
 ### Formats
 
@@ -40,7 +40,7 @@ Nothing is uploaded. Conversions run on your Mac, using Rust crates, macOS's own
 | PDF | PDF | PNG/JPG/TIFF (one per page), DOCX, ODT, RTF, HTML, TXT, Markdown, EPUB |
 | Documents | DOCX, DOC, ODT, RTF, TXT, HTML, Markdown, EPUB, WebArchive (Pages with LibreOffice) | DOCX, ODT, RTF, PDF, HTML, TXT, Markdown, EPUB |
 | Slides | PPTX, PPT, ODP, Keynote (*requires LibreOffice*) | PDF, PPTX, ODP |
-| Spreadsheets | XLSX, XLSM, XLS, XLSB, ODS, CSV, TSV | XLSX, CSV, TSV, JSON, HTML, Markdown |
+| Spreadsheets | XLSX, XLSM, XLS, XLSB, ODS, CSV, TSV | XLSX, CSV, TSV, JSON, HTML, Markdown, PDF (*LibreOffice*) |
 | Subtitles | SRT, VTT | SRT, VTT, TXT |
 | Archives | ZIP, RAR, 7z, TAR, TGZ, GZ, BZ2, XZ, ISO | Extract, ZIP, TAR.GZ |
 
@@ -50,23 +50,23 @@ Any file or folder can also be zipped.
 
 **Requirements:** macOS 13 or later. Development so far has been on Apple silicon.
 
-1. Download the latest `.dmg` from [Releases](../../releases) and drag **Satsuma** to Applications.
+1. Download the latest `.dmg` from [Releases](../../releases) and drag **Clémentine** to Applications.
 2. Install ffmpeg for audio and video: `brew install ffmpeg`.
-3. Optional: install [LibreOffice](https://www.libreoffice.org/) for slides and better Office → PDF output.
+3. Optional: install [LibreOffice](https://www.libreoffice.org/) (`brew install --cask libreoffice`) for slides, spreadsheet → PDF, and higher-fidelity documents: DOCX/ODT/PDF output is then laid out by LibreOffice Writer (real tables, lists, images) instead of textutil + CoreText.
 
 Builds aren't notarised yet. The first time you open the app, right-click it and choose **Open**.
 
 ### Build from source
 
 ```sh
-git clone https://github.com/diadieudoucoure/satsuma
-cd satsuma
+git clone https://github.com/diadieudoucoure/clementine
+cd clementine
 cargo install tauri-cli --version "^2" --locked
 
 # run the app in development
 cd app/src-tauri && cargo tauri dev
 
-# or bundle Satsuma.app + .dmg into target/release/bundle/
+# or bundle Clémentine.app + .dmg into target/release/bundle/
 cargo tauri build
 ```
 
@@ -75,17 +75,17 @@ cargo tauri build
 ```sh
 cargo install --path crates/cli
 
-satsuma list photo.heic                   # what can be done with a file
-satsuma convert jpg *.heic                # convert:jpg on each file
-satsuma convert mp4 clip.mov -o ~/Desktop # write results elsewhere
-satsuma run tool:merge a.pdf b.pdf        # any operation id from `list`
-satsuma run tool:compress video.mov --json
+clementine list photo.heic                   # what can be done with a file
+clementine convert jpg *.heic                # convert:jpg on each file
+clementine convert mp4 clip.mov -o ~/Desktop # write results elsewhere
+clementine run tool:merge a.pdf b.pdf        # any operation id from `list`
+clementine run tool:compress video.mov --json
 ```
 
 ## How it works
 
 ```
-app (Tauri 2)                                satsuma-core
+app (Tauri 2)                                clementine-core
 ├─ watcher.rs  mouse buttons, modifier       ├─ registry  operations() / run()
 │              flags, drag pasteboard        ├─ image     image, resvg, libwebp, sips
 ├─ wheel.rs    slice layout + drop hit-test  ├─ media     ffmpeg
@@ -103,7 +103,7 @@ app (Tauri 2)                                satsuma-core
 
 ```
 crates/core   conversion engine (library, unit tested)
-crates/cli    `satsuma` command
+crates/cli    `clementine` command
 app/src-tauri menu-bar app
 app/ui        HTML/CSS/JS for the wheel, settings and float windows
 assets        logo sources

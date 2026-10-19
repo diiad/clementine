@@ -5,6 +5,6 @@
   <key>LSUIElement</key>
   <true/>
   <key>NSAppleEventsUsageDescription</key>
-  <string>Satsuma reads the Finder selection when you open the wheel with the keyboard shortcut.</string>
+  <string>Clémentine reads the Finder selection when you open the wheel with the keyboard shortcut.</string>
 </dict>
 </plist>

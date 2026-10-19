@@ -44,23 +44,30 @@ pub fn can_read(e: &str) -> bool {
 
 /// Convert with LibreOffice into `dir`, returning the produced file.
 fn soffice(input: &Path, target: &str, dir: &Path) -> Result<PathBuf> {
+    soffice_with(input, None, target, dir)
+}
+
+/// [`soffice`] with an explicit import filter, e.g. `HTML (StarWriter)` so
+/// that HTML opens as a Writer document rather than in Writer/Web.
+fn soffice_with(input: &Path, filter: Option<&str>, target: &str, dir: &Path) -> Result<PathBuf> {
     let bin = office().ok_or(Error::MissingTool(
         "LibreOffice",
         "Install it from libreoffice.org or with `brew install --cask libreoffice`.",
     ))?;
     let profile = format!("-env:UserInstallation=file://{}/lo-profile", dir.display());
-    exec(
-        &bin,
-        [
-            profile.as_ref(),
-            "--headless".as_ref(),
-            "--convert-to".as_ref(),
-            target.as_ref(),
-            "--outdir".as_ref(),
-            dir.as_os_str(),
-            input.as_os_str(),
-        ],
-    )?;
+    let infilter = filter.map(|f| format!("--infilter={f}"));
+    let mut args: Vec<&std::ffi::OsStr> = vec![profile.as_ref(), "--headless".as_ref()];
+    if let Some(f) = &infilter {
+        args.push(f.as_ref());
+    }
+    args.extend([
+        std::ffi::OsStr::new("--convert-to"),
+        target.as_ref(),
+        "--outdir".as_ref(),
+        dir.as_os_str(),
+        input.as_os_str(),
+    ]);
+    exec(&bin, args)?;
     let produced = dir.join(format!("{}.{target}", stem(input)));
     if produced.is_file() {
         Ok(produced)
@@ -89,7 +96,9 @@ fn textutil(src: &Path, format: &str, out: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn markdown_to_html(md: &str, title: &str) -> String {
+/// Markdown → HTML fragment, with GitHub-style tables, strikethrough and
+/// task lists.
+fn markdown_body(md: &str) -> String {
     use pulldown_cmark::{html, Options as MdOptions, Parser};
     let parser = Parser::new_ext(
         md,
@@ -97,6 +106,15 @@ pub fn markdown_to_html(md: &str, title: &str) -> String {
     );
     let mut body = String::new();
     html::push_html(&mut body, parser);
+    // Plain attributes, as LibreOffice and textutil ignore most CSS.
+    body.replace(
+        "<table>",
+        "<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\">",
+    )
+}
+
+pub fn markdown_to_html(md: &str, title: &str) -> String {
+    let body = markdown_body(md);
     format!(
         "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>{}</title></head><body>\n{body}</body></html>\n",
         escape(title)
@@ -130,6 +148,24 @@ fn readable(input: &Path, tmp: &Path) -> Result<PathBuf> {
     }
 }
 
+/// Straight LibreOffice conversion (e.g. spreadsheet → PDF).
+pub fn office_convert(input: &Path, target: &str, opts: &Options) -> Result<PathBuf> {
+    let tmp = scratch()?;
+    let out = output_path(input, "", target, opts);
+    // LibreOffice guesses CSV separators poorly: hand it a workbook instead.
+    let src = if matches!(ext(input).as_str(), "csv" | "tsv") {
+        let staged = Options {
+            out_dir: Some(tmp.path().to_path_buf()),
+            ..opts.clone()
+        };
+        super::sheet::convert(input, "xlsx", &staged)?.remove(0)
+    } else {
+        input.to_path_buf()
+    };
+    std::fs::copy(soffice(&src, target, tmp.path())?, &out)?;
+    Ok(out)
+}
+
 pub fn convert(input: &Path, target: &str, opts: &Options) -> Result<PathBuf> {
     let out = output_path(input, "", target, opts);
     convert_into(input, &stem(input), target, &out)?;
@@ -152,6 +188,16 @@ fn convert_into(input: &Path, title: &str, target: &str, out: &Path) -> Result<(
         return Ok(());
     }
     let src = readable(input, tmp.path())?;
+    // Writer lays out HTML (lists, tables, images) far better than textutil
+    // and CoreText do.
+    if office_available()
+        && matches!(target, "docx" | "odt" | "pdf")
+        && matches!(ext(&src).as_str(), "html" | "htm")
+    {
+        let produced = soffice_with(&src, Some("HTML (StarWriter)"), target, tmp.path())?;
+        std::fs::copy(produced, out)?;
+        return Ok(());
+    }
     match target {
         // Markdown and EPUB were already turned into clean HTML.
         "html" if src != input && ext(&src) == "html" => {
@@ -364,13 +410,11 @@ fn epub_to_html(path: &Path) -> Result<String> {
 }
 
 fn write_epub(title: &str, markdown: &str, out: &Path) -> Result<()> {
-    use pulldown_cmark::{html, Parser};
     use zip::write::SimpleFileOptions;
-    let mut body = String::new();
-    html::push_html(&mut body, Parser::new(markdown));
+    let body = markdown_body(markdown);
     let title = escape(title);
     let id = format!(
-        "urn:satsuma:{:x}",
+        "urn:clementine:{:x}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
@@ -455,6 +499,26 @@ mod tests {
             .contains("paragraphe"));
         let from_pdf = from_pdf(&pdf, "docx", &opts).unwrap();
         assert!(from_pdf.exists());
+    }
+
+    #[test]
+    fn libreoffice_keeps_tables() {
+        if !office_available() {
+            eprintln!("LibreOffice not installed, skipping");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let md = dir.path().join("table.md");
+        std::fs::write(&md, "# T\n\n| Nom | Âge |\n|---|---|\n| Ada | 36 |\n").unwrap();
+        let opts = Options::default();
+        let pdf = convert(&md, "pdf", &opts).unwrap();
+        let text = super::super::pdf::text(&pdf).unwrap();
+        assert!(text.contains("Ada") && !text.contains("|---"), "{text}");
+        let csv = dir.path().join("people.csv");
+        std::fs::write(&csv, "nom;age\nAda;36\n").unwrap();
+        let pdf = office_convert(&csv, "pdf", &opts).unwrap();
+        let text = super::super::pdf::text(&pdf).unwrap();
+        assert!(text.contains("Ada") && !text.contains(';'), "{text}");
     }
 
     #[test]

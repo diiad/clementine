@@ -1,19 +1,19 @@
 [package]
-name = "satsuma-app"
-description = "Satsuma: drag a file, hold a key, drop it on the wheel"
+name = "clementine-app"
+description = "Clémentine: drag a file, hold a key, drop it on the wheel"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "satsuma-app"
+name = "clementine-app"
 path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-satsuma-core.workspace = true
+clementine-core.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

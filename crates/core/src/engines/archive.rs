@@ -83,7 +83,7 @@ pub fn extract(input: &Path, opts: &Options) -> Result<PathBuf> {
         .collect();
     if let [only] = entries.as_slice() {
         let name = only.file_name().unwrap_or_default().to_owned();
-        let tmp = unique_path(&parent.join(format!(".satsuma-{}", std::process::id())));
+        let tmp = unique_path(&parent.join(format!(".clementine-{}", std::process::id())));
         std::fs::rename(only, &tmp)?;
         std::fs::remove_dir_all(&dest)?;
         let lifted = unique_path(&parent.join(name));

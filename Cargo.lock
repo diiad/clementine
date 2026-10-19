@@ -734,6 +734,64 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
+name = "clementine-app"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clementine-core",
+ "drag",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-autostart",
+ "tauri-plugin-dialog",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-notification",
+]
+
+[[package]]
+name = "clementine-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "clementine-core",
+ "serde_json",
+]
+
+[[package]]
+name = "clementine-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "calamine",
+ "csv",
+ "flate2",
+ "htmd",
+ "image",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-foundation",
+ "objc2-pdf-kit",
+ "pulldown-cmark",
+ "resvg",
+ "rust_xlsxwriter",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "webp",
+ "which",
+ "zip 2.6.1",
+]
+
+[[package]]
 name = "codepage"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4136,64 +4194,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "satsuma-app"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "drag",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "satsuma-core",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-autostart",
- "tauri-plugin-dialog",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-notification",
-]
-
-[[package]]
-name = "satsuma-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "satsuma-core",
- "serde_json",
-]
-
-[[package]]
-name = "satsuma-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "calamine",
- "csv",
- "flate2",
- "htmd",
- "image",
- "objc2",
- "objc2-app-kit",
- "objc2-core-foundation",
- "objc2-core-graphics",
- "objc2-foundation",
- "objc2-pdf-kit",
- "pulldown-cmark",
- "resvg",
- "rust_xlsxwriter",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.21",
- "webp",
- "which",
- "zip 2.6.1",
 ]
 
 [[package]]

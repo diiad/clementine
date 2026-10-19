@@ -1,7 +1,7 @@
 //! Persistent preferences, stored as JSON in the app config directory.
 
 use crate::watcher::Modifier;
-use satsuma_core::{Category, Options};
+use clementine_core::{Category, Options};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 

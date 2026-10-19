@@ -1,7 +1,7 @@
 //! Wheel geometry, shared by the renderer (sent to the web view) and the
 //! drop hit-test (done here, in Rust, from the native drag-and-drop events).
 
-use satsuma_core::Operation;
+use clementine_core::Operation;
 use serde::Serialize;
 
 /// Window edge, in logical pixels.

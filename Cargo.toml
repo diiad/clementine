@@ -6,11 +6,11 @@ members = ["crates/core", "crates/cli", "app/src-tauri"]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/diadieudoucoure/satsuma"
+repository = "https://github.com/diadieudoucoure/clementine"
 authors = ["Diadieu Doucoure"]
 
 [workspace.dependencies]
-satsuma-core = { path = "crates/core" }
+clementine-core = { path = "crates/core" }
 anyhow = "1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }

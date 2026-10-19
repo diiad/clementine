@@ -1,6 +1,6 @@
 [package]
-name = "satsuma-core"
-description = "Local file conversion engine behind Satsuma"
+name = "clementine-core"
+description = "Local file conversion engine behind Clémentine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

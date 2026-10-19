@@ -53,7 +53,11 @@ fn convert_targets(path: &Path) -> Vec<&'static str> {
         }
         Kind::Slides if document::office_available() => vec!["pdf", "pptx", "odp"],
         Kind::Spreadsheet if sheet::can_read(&e) => {
-            vec!["xlsx", "csv", "tsv", "json", "html", "md"]
+            let mut v = vec!["xlsx", "csv", "tsv", "json", "html", "md"];
+            if document::office_available() {
+                v.push("pdf");
+            }
+            v
         }
         Kind::Subtitle => vec!["srt", "vtt", "txt"],
         Kind::Archive => vec!["extract", "zip", "tar.gz"],
@@ -241,6 +245,7 @@ fn convert_one(
         (Kind::Pdf, "png" | "jpg" | "tiff") => pdf::to_images(input, target, opts, progress),
         (Kind::Pdf, t) => document::from_pdf(input, t, opts).map(|p| vec![p]),
         (Kind::Document | Kind::Slides, t) => document::convert(input, t, opts).map(|p| vec![p]),
+        (Kind::Spreadsheet, "pdf") => document::office_convert(input, "pdf", opts).map(|p| vec![p]),
         (Kind::Spreadsheet, t) => sheet::convert(input, t, opts),
         (Kind::Subtitle, t) => subtitle::convert(input, t, opts).map(|p| vec![p]),
         _ => Err(unsupported(&format!("convert:{target}"), input)),

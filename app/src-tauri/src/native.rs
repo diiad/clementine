@@ -26,7 +26,7 @@ pub fn make_overlay(_: &tauri::WebviewWindow) {}
 /// wry always answers drags with `NSDragOperationCopy`. While ⌘ is held,
 /// Finder only offers `Move`, so the drop would be refused, and ⌘ is the
 /// default Tools key. Wrap wry's `draggingEntered:` / `draggingUpdated:` to
-/// pick an operation the source allows. Satsuma never deletes the source, so
+/// pick an operation the source allows. Clémentine never deletes the source, so
 /// answering `Move` is harmless: for file drags the destination does the work.
 #[cfg(target_os = "macos")]
 pub fn accept_any_drag_operation() {
@@ -159,7 +159,7 @@ pub fn finder_selection() -> Vec<PathBuf> {
 pub fn move_into(paths: &[PathBuf], dir: &std::path::Path) -> anyhow::Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     for p in paths {
-        let dest = satsuma_core::unique_path(&dir.join(p.file_name().unwrap_or_default()));
+        let dest = clementine_core::unique_path(&dir.join(p.file_name().unwrap_or_default()));
         if std::fs::rename(p, &dest).is_err() {
             // Different volume: let `ditto` copy (keeps metadata), then remove.
             let ok = std::process::Command::new("/usr/bin/ditto")

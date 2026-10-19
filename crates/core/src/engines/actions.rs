@@ -38,7 +38,7 @@ pub fn run(name: &str, inputs: &[PathBuf], _opts: &Options) -> Result<Vec<PathBu
         other => {
             return Err(Error::Unsupported {
                 op: format!("action:{other}"),
-                file: "the command line (open the Satsuma app)".into(),
+                file: "the command line (open the Clémentine app)".into(),
             })
         }
     }

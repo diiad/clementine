@@ -1,4 +1,4 @@
-//! Satsuma: a menu-bar app. Drag a file, hold a key, and a wheel of
+//! Clémentine: a menu-bar app. Drag a file, hold a key, and a wheel of
 //! conversions, tools or actions opens under the cursor; drop on a slice.
 
 mod native;
@@ -6,7 +6,7 @@ mod settings;
 mod watcher;
 mod wheel;
 
-use satsuma_core::{operations, Category, Operation};
+use clementine_core::{operations, Category, Operation};
 use serde::Serialize;
 use settings::Settings;
 use std::path::PathBuf;
@@ -81,7 +81,7 @@ fn wheel_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         return Ok(w);
     }
     let w = WebviewWindowBuilder::new(app, "wheel", WebviewUrl::App("wheel.html".into()))
-        .title("Satsuma")
+        .title("Clémentine")
         .inner_size(wheel::SIZE, wheel::SIZE)
         .transparent(true)
         .decorations(false)
@@ -300,7 +300,7 @@ fn start_job(app: &AppHandle, index: usize, paths: Vec<PathBuf>) {
                 );
             }
         };
-        let result = satsuma_core::run(&op.id, &paths, &opts, &progress);
+        let result = clementine_core::run(&op.id, &paths, &opts, &progress);
         let quick = op.id.starts_with("action:");
         let linger = match &result {
             Ok(outputs) => {
@@ -322,7 +322,7 @@ fn start_job(app: &AppHandle, index: usize, paths: Vec<PathBuf>) {
                     notify(&app, &format!("{} finished", op.label), &message);
                 }
                 if reveal && !outputs.is_empty() {
-                    let _ = satsuma_core::run("action:reveal", outputs, &opts, &|_| {});
+                    let _ = clementine_core::run("action:reveal", outputs, &opts, &|_| {});
                 }
                 if quick {
                     250
@@ -404,7 +404,7 @@ fn open_for_selection(app: &AppHandle) {
         let h = app.clone();
         let _ = app.run_on_main_thread(move || {
             if paths.is_empty() {
-                notify(&h, "Satsuma", "Select files in Finder first.");
+                notify(&h, "Clémentine", "Select files in Finder first.");
             } else {
                 open_wheel(&h, paths, Category::Convert, true);
             }
@@ -458,7 +458,7 @@ fn open_settings(app: &AppHandle) {
     }
     if let Ok(w) =
         WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
-            .title("Satsuma Settings")
+            .title("Clémentine Settings")
             .inner_size(520.0, 860.0)
             .resizable(false)
             .center()
@@ -554,8 +554,8 @@ struct Engines {
 fn engine_status(app: AppHandle) -> Engines {
     Engines {
         version: env!("CARGO_PKG_VERSION"),
-        ffmpeg: satsuma_core::engines::find_tool("ffmpeg").map(|p| p.display().to_string()),
-        libreoffice: satsuma_core::engines::document::office().map(|p| p.display().to_string()),
+        ffmpeg: clementine_core::engines::find_tool("ffmpeg").map(|p| p.display().to_string()),
+        libreoffice: clementine_core::engines::document::office().map(|p| p.display().to_string()),
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
     }
 }
@@ -570,7 +570,7 @@ fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
 struct FloatItem {
     path: String,
     name: String,
-    kind: satsuma_core::Kind,
+    kind: clementine_core::Kind,
 }
 
 #[tauri::command]
@@ -585,7 +585,7 @@ fn float_items(app: AppHandle) -> Vec<FloatItem> {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default(),
-            kind: satsuma_core::detect(p),
+            kind: clementine_core::detect(p),
         })
         .collect()
 }
@@ -642,7 +642,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let toggle = CheckMenuItem::with_id(app, "toggle", "Enabled", true, enabled, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
     let float = MenuItem::with_id(app, "float", "Show Float Shelf", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Satsuma", true, Some("CmdOrCtrl+Q"))?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Clémentine", true, Some("CmdOrCtrl+Q"))?;
     let menu = Menu::with_items(
         app,
         &[
@@ -661,7 +661,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             "../icons/tray.png"
         ))?)
         .icon_as_template(true)
-        .tooltip("Satsuma")
+        .tooltip("Clémentine")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(move |app, event| match event.id().as_ref() {
@@ -726,7 +726,7 @@ fn main() {
             register_shortcut(&handle, &shortcut);
             let watcher_handle = handle.clone();
             watcher::spawn(move |e| on_watch_event(&watcher_handle, e));
-            // `satsuma-app --wheel <files…>`: open the wheel right away (handy for development).
+            // `clementine-app --wheel <files…>`: open the wheel right away (handy for development).
             let args: Vec<String> = std::env::args().collect();
             if let Some(i) = args.iter().position(|a| a == "--wheel") {
                 let files: Vec<PathBuf> = args[i + 1..]
@@ -750,7 +750,7 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building Satsuma");
+        .expect("error while building Clémentine");
 
     app.run(|_, event| {
         // Closing the settings window must not quit a menu-bar app.

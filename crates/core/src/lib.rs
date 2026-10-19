@@ -1,4 +1,4 @@
-//! Satsuma core: a local, offline file-conversion engine.
+//! Clémentine core: a local, offline file-conversion engine.
 //!
 //! The engine is organised around [`Operation`]s. Given a selection of files,
 //! [`operations`] lists everything that can be done with it, grouped by

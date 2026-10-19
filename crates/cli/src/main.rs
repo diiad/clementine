@@ -1,20 +1,20 @@
-//! `satsuma` — the conversion engine from the command line.
+//! `clementine` — the conversion engine from the command line.
 //!
 //! ```text
-//! satsuma list photo.heic            # what can I do with this file?
-//! satsuma convert webp *.png         # convert:webp on every file
-//! satsuma run tool:merge a.pdf b.pdf # any operation id from `list`
+//! clementine list photo.heic            # what can I do with this file?
+//! clementine convert webp *.png         # convert:webp on every file
+//! clementine run tool:merge a.pdf b.pdf # any operation id from `list`
 //! ```
 
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
-use satsuma_core::{operations, run, Category, Options};
+use clementine_core::{operations, run, Category, Options};
 use std::io::Write;
 use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(
-    name = "satsuma",
+    name = "clementine",
     version,
     about = "Convert files locally: images, audio, video, PDF, documents, archives"
 )]
@@ -39,7 +39,7 @@ struct Cli {
 enum Command {
     /// List the operations available for the given files.
     List { files: Vec<PathBuf> },
-    /// Convert files to another format (e.g. `satsuma convert jpg a.heic`).
+    /// Convert files to another format (e.g. `clementine convert jpg a.heic`).
     Convert { format: String, files: Vec<PathBuf> },
     /// Run any operation id, e.g. `tool:compress` or `convert:mp3`.
     Run { op: String, files: Vec<PathBuf> },

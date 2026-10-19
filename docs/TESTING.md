@@ -4,7 +4,7 @@ The conversion engine has unit tests (`cargo test --workspace`). The parts below
 involve real drags, windows and permissions, so they have to be checked by hand.
 
 Launch with `cd app/src-tauri && cargo tauri dev`, or open
-`target/release/bundle/macos/Satsuma.app`.
+`target/release/bundle/macos/Clémentine.app`.
 
 ## Drag detection
 - [ ] Drag a PNG from Finder and press **⇧**: the Convert wheel opens centred on the cursor.

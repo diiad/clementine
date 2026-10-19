@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Satsuma",
+  "productName": "Clémentine",
   "version": "0.1.0",
-  "identifier": "io.github.diadieudoucoure.satsuma",
+  "identifier": "io.github.diadieudoucoure.clementine",
   "build": {
     "frontendDist": "../ui"
   },

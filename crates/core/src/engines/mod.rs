@@ -50,11 +50,11 @@ where
     Ok(out)
 }
 
-/// Locate an executable: `$SATSUMA_<NAME>`, next to our own binary (bundled
+/// Locate an executable: `$CLEMENTINE_<NAME>`, next to our own binary (bundled
 /// sidecar), Homebrew prefixes, then `$PATH`. GUI apps on macOS start with a
 /// minimal `$PATH`, hence the explicit Homebrew lookups.
 pub fn find_tool(name: &str) -> Option<PathBuf> {
-    let env_key = format!("SATSUMA_{}", name.to_uppercase().replace('-', "_"));
+    let env_key = format!("CLEMENTINE_{}", name.to_uppercase().replace('-', "_"));
     if let Some(p) = std::env::var_os(env_key).map(PathBuf::from) {
         if p.is_file() {
             return Some(p);
@@ -78,5 +78,5 @@ pub fn find_tool(name: &str) -> Option<PathBuf> {
 
 /// Scratch directory that is removed when dropped.
 pub(crate) fn scratch() -> Result<tempfile::TempDir> {
-    Ok(tempfile::Builder::new().prefix("satsuma-").tempdir()?)
+    Ok(tempfile::Builder::new().prefix("clementine-").tempdir()?)
 }
