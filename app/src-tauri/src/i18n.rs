@@ -69,6 +69,13 @@ pub fn tr(lang: Lang, en: &'static str) -> &'static str {
         "Show Float Shelf" => "Afficher l’étagère Float",
         "Enabled" => "Activé",
         "Settings…" => "Réglages…",
+        // Updates
+        "Clémentine {v} is available. Install it now? The app restarts afterwards." => {
+            "Clémentine {v} est disponible. L’installer maintenant ? L’app redémarrera ensuite."
+        }
+        "Install" => "Installer",
+        "Later" => "Plus tard",
+        "The update failed:" => "La mise à jour a échoué :",
         "Quit Clémentine" => "Quitter Clémentine",
         // Windows, dialogs and notifications
         "Clémentine Settings" => "Réglages de Clémentine",

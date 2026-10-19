@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Clémentine",
-  "version": "0.1.0",
+  "version": "0.2.0-beta.5",
   "identifier": "io.github.diadieudoucoure.clementine",
   "build": {
     "frontendDist": "../ui"
@@ -16,15 +16,37 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": [
+      "app",
+      "dmg"
+    ],
     "category": "Utility",
     "shortDescription": "Drag, hold a key, drop: local file conversion",
     "copyright": "MIT License",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.png"],
-    "resources": ["icons/tray.png"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.png"
+    ],
+    "resources": [
+      "icons/tray.png"
+    ],
     "macOS": {
       "minimumSystemVersion": "13.0"
-    }
+    },
+    "createUpdaterArtifacts": true
   },
-  "plugins": {}
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI0N0VDQUJGRkY4NUYxM0QKUldROThZWC92OHArSkFxZFRxdEc2V3I5RG9XOUs3T0haYWtwOTBnV1FkcXNPSTducXd2aFRZWVcK",
+      "endpoints": [
+        "https://github.com/diiad/clementine-mac/releases/download/updater/{{target}}-{{arch}}.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
 }

@@ -6,6 +6,12 @@ on:
   # Manual runs build everything and keep it as workflow artifacts.
   workflow_dispatch:
 
+# Signs the updater bundles (.app.tar.gz, setup.exe) checked by the app.
+env:
+  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+  RELEASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+
 jobs:
   bundle:
     runs-on: macos-latest
@@ -29,6 +35,10 @@ jobs:
           mkdir dist
           cp target/release/bundle/dmg/*.dmg dist/
           tar -czf dist/clementine-cli-macos-arm64.tar.gz -C target/release clementine
+          # ASCII names: GitHub mangles the é in asset names.
+          cp target/release/bundle/macos/*.app.tar.gz dist/Clementine_aarch64.app.tar.gz
+          cp target/release/bundle/macos/*.app.tar.gz.sig dist/Clementine_aarch64.app.tar.gz.sig
+          python3 scripts/update-feed.py dist/darwin-aarch64.json "$RELEASE_URL/Clementine_aarch64.app.tar.gz" dist/Clementine_aarch64.app.tar.gz.sig
       - uses: actions/upload-artifact@v4
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         with:
@@ -39,6 +49,12 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+      - name: Publish update feed
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload updater dist/darwin-aarch64.json --clobber --repo ${{ github.repository }}
 
   windows:
     runs-on: windows-latest
@@ -67,7 +83,12 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory dist | Out-Null
-          Copy-Item target/release/bundle/nsis/*.exe dist/
+          # ASCII names: GitHub mangles the é in asset names.
+          $version = (Get-Content app/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $setup = "Clementine_${version}_x64-setup.exe"
+          Copy-Item (Get-ChildItem target/release/bundle/nsis/*.exe).FullName "dist/$setup"
+          Copy-Item (Get-ChildItem target/release/bundle/nsis/*.exe.sig).FullName "dist/$setup.sig"
+          python scripts/update-feed.py dist/windows-x86_64.json "$env:RELEASE_URL/$setup" "dist/$setup.sig"
           Compress-Archive -Path target/release/clementine.exe, app/src-tauri/pdfium/pdfium.dll -DestinationPath dist/clementine-cli-windows-x64.zip
       - uses: actions/upload-artifact@v4
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -78,3 +99,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: dist/*
+          prerelease: ${{ contains(github.ref_name, '-') }}
+      - name: Publish update feed
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload updater dist/windows-x86_64.json --clobber --repo ${{ github.repository }}

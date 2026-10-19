@@ -9,6 +9,7 @@ mod i18n;
 mod install;
 mod native;
 mod settings;
+mod updater;
 mod watcher;
 mod wheel;
 #[cfg(windows)]
@@ -777,7 +778,7 @@ async fn choose_folder(app: AppHandle) -> Option<String> {
 
 #[derive(Serialize)]
 struct Engines {
-    version: &'static str,
+    version: String,
     /// `macos` or `windows`, to adapt the Settings page.
     platform: &'static str,
     ffmpeg: Option<String>,
@@ -789,11 +790,17 @@ struct Engines {
 fn engine_status(app: AppHandle) -> Engines {
     Engines {
         platform: std::env::consts::OS,
-        version: env!("CARGO_PKG_VERSION"),
+        version: app.package_info().version.to_string(),
         ffmpeg: clementine_core::engines::find_tool("ffmpeg").map(|p| p.display().to_string()),
         libreoffice: clementine_core::engines::document::office().map(|p| p.display().to_string()),
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
     }
+}
+
+/// "Check for updates" in Settings: the new version, or None if up to date.
+#[tauri::command]
+async fn check_update(app: AppHandle) -> Result<Option<String>, String> {
+    updater::check(&app).await
 }
 
 /// Install ffmpeg or LibreOffice from the Settings page.
@@ -987,6 +994,7 @@ fn main() {
         ));
     let app = builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
@@ -1005,6 +1013,7 @@ fn main() {
             choose_folder,
             engine_status,
             install_engine,
+            check_update,
             set_autostart,
             float_items,
             float_drag,
@@ -1035,6 +1044,7 @@ fn main() {
             }
             let watcher_handle = handle.clone();
             watcher::spawn(move |e| on_watch_event(&watcher_handle, e));
+            updater::spawn_auto_check(handle.clone());
             #[cfg(windows)]
             if let Err(e) =
                 windows::register_context_menu(tr(lang(&handle), "Open with Clémentine"))

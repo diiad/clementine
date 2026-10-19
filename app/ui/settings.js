@@ -80,6 +80,12 @@ const WINDOWS_TEXT = {
     "Click, then press the new shortcut. Backspace clears it, Esc cancels.",
 };
 Object.assign(FR, {
+  "Check for updates automatically": "Rechercher les mises à jour automatiquement",
+  "Check now": "Vérifier",
+  "Checking…": "Vérification…",
+  "Version {v} is available.": "La version {v} est disponible.",
+  "Clémentine is up to date.": "Clémentine est à jour.",
+  "Could not check for updates:": "Impossible de vérifier les mises à jour :",
   "Install": "Installer",
   "Installing…": "Installation…",
   "Installation failed:": "Échec de l’installation :",
@@ -145,7 +151,7 @@ function fill() {
   $("dpi").value = String(settings.dpi);
   $("quality").value = settings.quality;
   $("quality-val").textContent = settings.quality;
-  for (const id of ["enabled", "reveal_after", "notify", "haptics", "hide_menu_bar_icon"]) $(id).checked = settings[id];
+  for (const id of ["enabled", "reveal_after", "notify", "haptics", "hide_menu_bar_icon", "auto_update"]) $(id).checked = settings[id];
   $("hidden-hint").hidden = !settings.hide_menu_bar_icon;
   $("custom_dir").textContent = settings.custom_dir || t("No folder chosen");
   $("language").value = settings.language;
@@ -255,6 +261,23 @@ bind("reveal_after", (el) => el.checked);
 bind("notify", (el) => el.checked);
 bind("haptics", (el) => el.checked);
 bind("hide_menu_bar_icon", (el) => el.checked);
+bind("auto_update", (el) => el.checked);
+$("check-update").addEventListener("click", async () => {
+  const button = $("check-update");
+  const note = $("update-status");
+  button.disabled = true;
+  note.textContent = t("Checking…");
+  note.hidden = false;
+  try {
+    const version = await invoke("check_update");
+    note.textContent = version
+      ? t("Version {v} is available.").replace("{v}", version)
+      : t("Clémentine is up to date.");
+  } catch (e) {
+    note.textContent = `${t("Could not check for updates:")} ${e}`;
+  }
+  button.disabled = false;
+});
 bind("haptic_strength", (el) => el.value);
 $("haptic_strength").addEventListener("change", (e) => invoke("test_haptic", { strength: e.target.value }));
 $("language").addEventListener("change", async (e) => {

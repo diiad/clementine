@@ -45,6 +45,8 @@ pub struct Settings {
     pub haptic_strength: HapticStrength,
     /// Hide the menu-bar icon. Opening the app again shows Settings.
     pub hide_menu_bar_icon: bool,
+    /// Look for a new version every few hours and offer to install it.
+    pub auto_update: bool,
 }
 
 impl Default for Settings {
@@ -76,6 +78,7 @@ impl Default for Settings {
             haptics: true,
             haptic_strength: HapticStrength::Medium,
             hide_menu_bar_icon: false,
+            auto_update: true,
         }
     }
 }
