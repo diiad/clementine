@@ -36,23 +36,30 @@ impl Operation {
 /// Output formats offered for a single input file.
 fn convert_targets(path: &Path) -> Vec<&'static str> {
     let e = ext(path);
+    let mac = cfg!(target_os = "macos");
+    // HEIC/ICNS go through `sips`, PDF output through PDFKit: macOS only.
+    let mac_only = |t: &&str| mac || !matches!(*t, "heic" | "icns" | "pdf");
     let targets: Vec<&'static str> = match detect(path) {
-        Kind::Image => vec![
+        Kind::Image if image::can_decode(&e) => [
             "jpg", "png", "webp", "heic", "avif", "tiff", "gif", "bmp", "ico", "icns", "pdf",
-        ],
-        Kind::Svg => vec!["png", "jpg", "webp", "avif", "tiff", "pdf"],
+        ]
+        .into_iter()
+        .filter(mac_only)
+        .collect(),
+        Kind::Svg => ["png", "jpg", "webp", "avif", "tiff", "pdf"]
+            .into_iter()
+            .filter(mac_only)
+            .collect(),
         Kind::Audio => vec![
             "mp3", "m4a", "aac", "wav", "flac", "ogg", "opus", "aiff", "wma",
         ],
         Kind::Video => vec![
             "mp4", "mov", "m4v", "mkv", "webm", "avi", "wmv", "gif", "mp3", "m4a", "wav", "flac",
         ],
-        Kind::Pdf => vec![
+        Kind::Pdf if pdf::available() => vec![
             "png", "jpg", "tiff", "docx", "odt", "rtf", "html", "txt", "md", "epub",
         ],
-        Kind::Document if document::can_read(&e) => {
-            vec!["docx", "odt", "rtf", "pdf", "html", "txt", "md", "epub"]
-        }
+        Kind::Document if document::can_read(&e) => document::targets(&e),
         Kind::Slides if document::office_available() => vec!["pdf", "pptx", "odp"],
         Kind::Spreadsheet if sheet::can_read(&e) => {
             let mut v = vec!["xlsx", "csv", "tsv", "json", "html", "md"];
@@ -63,9 +70,13 @@ fn convert_targets(path: &Path) -> Vec<&'static str> {
         }
         Kind::Subtitle => vec!["srt", "vtt", "txt"],
         Kind::Archive => vec!["extract", "zip", "tar.gz"],
-        Kind::Folder | Kind::Other | Kind::Document | Kind::Slides | Kind::Spreadsheet => {
-            vec!["zip", "tar.gz"]
-        }
+        Kind::Folder
+        | Kind::Other
+        | Kind::Image
+        | Kind::Pdf
+        | Kind::Document
+        | Kind::Slides
+        | Kind::Spreadsheet => vec!["zip", "tar.gz"],
     };
     let same = |t: &&str| match (*t, e.as_str()) {
         ("jpg", "jpeg") | ("tiff", "tif") | ("aiff", "aif") | ("heic", "heif") => true,
@@ -97,12 +108,14 @@ fn tool_list(kinds: &[Kind], count: usize) -> Vec<(&'static str, &'static str)> 
             ("flip-h", "Flip"),
             ("grayscale", "Grayscale"),
             ("strip-metadata", "Strip metadata"),
-            ("ocr", "Extract text"),
         ]);
+        if vision::available() {
+            tools.push(("ocr", "Extract text"));
+        }
         if vision::can_cut_out() {
             tools.push(("remove-bg", "Remove BG"));
         }
-        if count > 1 {
+        if count > 1 && pdf::available() {
             tools.push(("merge-pdf", "Combine PDF"));
         }
     } else if all(Kind::Video) {
@@ -129,7 +142,7 @@ fn tool_list(kinds: &[Kind], count: usize) -> Vec<(&'static str, &'static str)> 
         if count > 1 {
             tools.push(("merge", "Merge"));
         }
-    } else if all(Kind::Pdf) {
+    } else if all(Kind::Pdf) && pdf::available() {
         tools.extend([
             ("compress", "Compress"),
             ("rotate-cw", "Rotate ↻"),
@@ -187,6 +200,7 @@ pub fn operations(inputs: &[PathBuf], category: Category) -> Vec<Operation> {
         }
         Category::Action => ACTIONS
             .iter()
+            .filter(|(id, _)| cfg!(target_os = "macos") || *id != "airdrop")
             .map(|(id, label)| Operation::new(category, format!("action:{id}"), *label))
             .collect(),
     }
@@ -332,9 +346,9 @@ mod tests {
 
     #[test]
     fn multi_tools_need_several_files() {
-        let one = ids(operations(&["a.pdf".into()], Category::Tool));
+        let one = ids(operations(&["a.mp3".into()], Category::Tool));
         let two = ids(operations(
-            &["a.pdf".into(), "b.pdf".into()],
+            &["a.mp3".into(), "b.mp3".into()],
             Category::Tool,
         ));
         assert!(!one.contains(&"tool:merge".to_string()));

@@ -16,13 +16,13 @@
 
   <section>
     <h2>Keys</h2>
-    <p class="muted">Hold one of these while dragging files.</p>
-    <div class="row"><label for="convert_key">Convert</label><select id="convert_key"></select></div>
-    <div class="row"><label for="tools_key">Tools</label><select id="tools_key"></select></div>
-    <div class="row"><label for="actions_key">Actions</label><select id="actions_key"></select></div>
+    <p class="muted mac-only">Hold one of these while dragging files.</p>
+    <div class="row mac-only"><label for="convert_key">Convert</label><select id="convert_key"></select></div>
+    <div class="row mac-only"><label for="tools_key">Tools</label><select id="tools_key"></select></div>
+    <div class="row mac-only"><label for="actions_key">Actions</label><select id="actions_key"></select></div>
     <div class="row"><label for="shortcut">Wheel for Finder selection</label><button id="shortcut" class="recorder" title="Click, then press the new shortcut. ⌫ clears it, Esc cancels."></button></div>
     <p id="shortcut-error" class="warning small" hidden></p>
-    <p id="key-warning" class="warning" hidden>Each wheel needs its own key.</p>
+    <p id="key-warning" class="warning mac-only" hidden>Each wheel needs its own key.</p>
   </section>
 
   <section>
@@ -46,8 +46,8 @@
     </div>
     <div class="row"><label for="reveal_after">Reveal results in Finder</label><input id="reveal_after" type="checkbox"></div>
     <div class="row"><label for="notify">Notify when long jobs finish</label><input id="notify" type="checkbox"></div>
-    <div class="row"><label for="haptics">Haptic feedback on the trackpad</label><input id="haptics" type="checkbox"></div>
-    <div class="row" id="strength-row">
+    <div class="row mac-only"><label for="haptics">Haptic feedback on the trackpad</label><input id="haptics" type="checkbox"></div>
+    <div class="row mac-only" id="strength-row">
       <label for="haptic_strength">Haptic strength</label>
       <select id="haptic_strength">
         <option value="light">Light</option>

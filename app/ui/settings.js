@@ -55,12 +55,48 @@ const FR = {
   "Not installed": "Non installé",
   "Press keys…": "Tapez les touches…",
   "Add ⌘, ⌥ or ⌃": "Ajoutez ⌘, ⌥ ou ⌃",
+  "Add Ctrl, Alt or Win": "Ajoutez Ctrl, Alt ou Win",
   "None": "Aucun",
   "Version": "Version",
   "MIT licensed": "licence MIT",
 };
 let lang = "en";
+let platform = "macos";
 const t = (en) => (lang === "fr" && FR[en]) || en;
+
+// Windows wording for the few macOS-specific strings, applied before
+// translation (FR has entries for both).
+const WINDOWS_TEXT = {
+  "Wheel for Finder selection": "Wheel for Explorer selection",
+  "Reveal results in Finder": "Show results in File Explorer",
+  "Hide menu bar icon": "Hide tray icon",
+  "Open Clémentine again from Finder or Spotlight to get back here.":
+    "Open Clémentine again from the Start menu to get back here.",
+  "Click, then press the new shortcut. ⌫ clears it, Esc cancels.":
+    "Click, then press the new shortcut. Backspace clears it, Esc cancels.",
+};
+Object.assign(FR, {
+  "Wheel for Explorer selection": "Roue pour la sélection de l’Explorateur",
+  "Show results in File Explorer": "Afficher les résultats dans l’Explorateur",
+  "Hide tray icon": "Masquer l’icône de la zone de notification",
+  "Open Clémentine again from the Start menu to get back here.":
+    "Rouvrez Clémentine depuis le menu Démarrer pour revenir ici.",
+  "Click, then press the new shortcut. Backspace clears it, Esc cancels.":
+    "Cliquez, puis tapez le nouveau raccourci. Retour arrière l’efface, Échap annule.",
+});
+
+function adaptToPlatform() {
+  if (platform !== "windows") return;
+  document.body.classList.add("windows");
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const key = n.nodeValue.trim();
+    if (WINDOWS_TEXT[key]) n.nodeValue = n.nodeValue.replace(key, WINDOWS_TEXT[key]);
+  }
+  for (const el of document.querySelectorAll("[title]")) {
+    if (WINDOWS_TEXT[el.title]) el.title = WINDOWS_TEXT[el.title];
+  }
+}
 const original = new WeakMap();
 
 function translatePage() {
@@ -136,6 +172,11 @@ function prettyShortcut(s) {
   if (!s) return t("None");
   const parts = s.split("+");
   const key = parts.pop();
+  if (platform === "windows") {
+    const names = { Control: "Ctrl", Alt: "Alt", Shift: "Shift", Super: "Win" };
+    const mods = ["Control", "Alt", "Shift", "Super"].filter((m) => parts.includes(m));
+    return [...mods.map((m) => names[m]), keyLabel(key)].join("+");
+  }
   // Mac order: ⌃⌥⇧⌘.
   const mods = ["Control", "Alt", "Shift", "Super"].filter((m) => parts.includes(m));
   return mods.map((m) => MOD_SYMBOLS[m]).join("") + keyLabel(key);
@@ -167,7 +208,7 @@ document.addEventListener("keydown", (e) => {
   if (!mods.length && e.code === "Backspace") {
     settings.shortcut = "";
   } else if (!mods.length || (mods.length === 1 && mods[0] === "Shift")) {
-    $("shortcut").textContent = t("Add ⌘, ⌥ or ⌃");
+    $("shortcut").textContent = t(platform === "windows" ? "Add Ctrl, Alt or Win" : "Add ⌘, ⌥ or ⌃");
     return;
   } else {
     settings.shortcut = [...mods, e.code].join("+");
@@ -234,6 +275,8 @@ async function refreshEngines() {
 
 (async () => {
   settings = await invoke("get_settings");
+  platform = (await invoke("engine_status")).platform || "macos";
+  adaptToPlatform();
   lang = await invoke("ui_language");
   translatePage();
   fill();

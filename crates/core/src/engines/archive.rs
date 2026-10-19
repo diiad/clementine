@@ -1,5 +1,5 @@
-//! Archives through bsdtar (libarchive ships with macOS and reads ZIP, RAR,
-//! 7z, TAR, ISO…), plus a pure-Rust path for bare `.gz` files.
+//! Archives through bsdtar (libarchive ships with macOS and Windows 10+, and
+//! reads ZIP, RAR, 7z, TAR, ISO…), plus a pure-Rust path for bare `.gz` files.
 
 use super::{exec, scratch};
 use crate::kind::ext;
@@ -8,6 +8,9 @@ use crate::{output_path, Options, Result};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+#[cfg(windows)]
+const TAR: &str = r"C:\Windows\System32\tar.exe";
+#[cfg(not(windows))]
 const TAR: &str = "/usr/bin/tar";
 
 /// Pack `inputs` (files or folders) into one `.zip` or `.tar.gz`.
@@ -22,11 +25,10 @@ pub fn create(inputs: &[PathBuf], format: &str, opts: &Options) -> Result<PathBu
             .unwrap_or_default();
         unique_path(&dir.join(format!("Archive.{format}")))
     };
-    let mut args: Vec<OsString> = vec![
-        "--no-mac-metadata".into(),
-        "--exclude".into(),
-        ".DS_Store".into(),
-    ];
+    let mut args: Vec<OsString> = vec!["--exclude".into(), ".DS_Store".into()];
+    if cfg!(target_os = "macos") {
+        args.push("--no-mac-metadata".into());
+    }
     args.push(if format == "zip" {
         "--format=zip".into()
     } else {
@@ -35,7 +37,8 @@ pub fn create(inputs: &[PathBuf], format: &str, opts: &Options) -> Result<PathBu
     args.push("-cf".into());
     args.push(out.clone().into());
     for input in inputs {
-        let input = input.canonicalize()?;
+        // Not canonicalize(): on Windows it yields `\\?\` paths tar rejects.
+        let input = std::path::absolute(input)?;
         let parent = input.parent().unwrap_or(Path::new("/"));
         args.push("-C".into());
         args.push(parent.into());
@@ -107,7 +110,7 @@ pub fn repack(input: &Path, format: &str, opts: &Options) -> Result<PathBuf> {
     Ok(out)
 }
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(all(test, any(target_os = "macos", windows)))]
 mod tests {
     use super::*;
 

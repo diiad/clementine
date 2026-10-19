@@ -1,5 +1,7 @@
 //! On-device machine learning through Apple's Vision framework: text
 //! recognition (OCR) and subject cut-out. Nothing leaves the Mac.
+// The macOS engine is all there is; elsewhere only the stubs remain.
+#![cfg_attr(not(target_os = "macos"), allow(unused))]
 
 use super::{image as img, scratch};
 use crate::{output_path, Error, Options, Result};
@@ -133,6 +135,11 @@ mod mac {
 }
 
 pub use mac::can_cut_out;
+
+/// Text recognition (macOS).
+pub fn available() -> bool {
+    cfg!(target_os = "macos")
+}
 
 /// A recognised run of text, in normalised image coordinates (top-down).
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]

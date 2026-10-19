@@ -32,13 +32,31 @@ pub fn office() -> Option<PathBuf> {
     find_tool("soffice")
 }
 
+/// macOS's `textutil`. Elsewhere LibreOffice does its work.
+fn has_textutil() -> bool {
+    Path::new(TEXTUTIL).is_file()
+}
+
+/// Output formats for a document with extension `e` on this machine.
+pub fn targets(e: &str) -> Vec<&'static str> {
+    if has_textutil() || office_available() {
+        vec!["docx", "odt", "rtf", "pdf", "html", "txt", "md", "epub"]
+    } else {
+        // Pure Rust: Markdown and EPUB in, HTML / Markdown / EPUB out.
+        match e {
+            "md" | "markdown" | "epub" => vec!["html", "md", "epub"],
+            _ => Vec::new(),
+        }
+    }
+}
+
 pub fn office_available() -> bool {
     office().is_some()
 }
 
 pub fn can_read(e: &str) -> bool {
-    TEXTUTIL_IN.contains(&e)
-        || matches!(e, "md" | "markdown" | "epub")
+    matches!(e, "md" | "markdown" | "epub")
+        || (TEXTUTIL_IN.contains(&e) && (has_textutil() || office_available()))
         || (e == "pages" && office_available())
 }
 
@@ -52,7 +70,11 @@ fn soffice(input: &Path, target: &str, dir: &Path) -> Result<PathBuf> {
 fn soffice_with(input: &Path, filter: Option<&str>, target: &str, dir: &Path) -> Result<PathBuf> {
     let bin = office().ok_or(Error::MissingTool(
         "LibreOffice",
-        "Install it from libreoffice.org or with `brew install --cask libreoffice`.",
+        if cfg!(windows) {
+            "Install it from libreoffice.org or with `winget install TheDocumentFoundation.LibreOffice`."
+        } else {
+            "Install it from libreoffice.org or with `brew install --cask libreoffice`."
+        },
     ))?;
     let profile = format!("-env:UserInstallation=file://{}/lo-profile", dir.display());
     let infilter = filter.map(|f| format!("--infilter={f}"));
@@ -68,7 +90,9 @@ fn soffice_with(input: &Path, filter: Option<&str>, target: &str, dir: &Path) ->
         input.as_os_str(),
     ]);
     exec(&bin, args)?;
-    let produced = dir.join(format!("{}.{target}", stem(input)));
+    // `target` may carry a filter, e.g. `txt:Text (encoded):UTF8`.
+    let ext = target.split(':').next().unwrap_or(target);
+    let produced = dir.join(format!("{}.{ext}", stem(input)));
     if produced.is_file() {
         Ok(produced)
     } else {
@@ -80,6 +104,9 @@ fn soffice_with(input: &Path, filter: Option<&str>, target: &str, dir: &Path) ->
 }
 
 fn textutil(src: &Path, format: &str, out: &Path) -> Result<()> {
+    if !has_textutil() {
+        return via_office(src, format, out);
+    }
     let mut args: Vec<&std::ffi::OsStr> = vec!["-convert".as_ref(), format.as_ref()];
     if matches!(ext(src).as_str(), "txt" | "text") {
         args.extend([
@@ -148,6 +175,21 @@ fn readable(input: &Path, tmp: &Path) -> Result<PathBuf> {
     }
 }
 
+/// What [`textutil`] does, with LibreOffice (Windows).
+fn via_office(src: &Path, format: &str, out: &Path) -> Result<()> {
+    let tmp = scratch()?;
+    let html = matches!(ext(src).as_str(), "html" | "htm");
+    let target = match format {
+        "txt" => "txt:Text (encoded):UTF8",
+        "html" => "html:XHTML Writer File:UTF8",
+        f => f,
+    };
+    let filter = html.then_some("HTML (StarWriter)");
+    let produced = soffice_with(src, filter, target, tmp.path())?;
+    std::fs::copy(produced, out)?;
+    Ok(())
+}
+
 /// Straight LibreOffice conversion (e.g. spreadsheet → PDF).
 pub fn office_convert(input: &Path, target: &str, opts: &Options) -> Result<PathBuf> {
     let tmp = scratch()?;
@@ -188,6 +230,13 @@ fn convert_into(input: &Path, title: &str, target: &str, out: &Path) -> Result<(
         return Ok(());
     }
     let src = readable(input, tmp.path())?;
+    // Without macOS's PDF engine, LibreOffice prints every document.
+    if target == "pdf" && !cfg!(target_os = "macos") {
+        let html = matches!(ext(&src).as_str(), "html" | "htm");
+        let produced = soffice_with(&src, html.then_some("HTML (StarWriter)"), "pdf", tmp.path())?;
+        std::fs::copy(produced, out)?;
+        return Ok(());
+    }
     // Writer lays out HTML (lists, tables, images) far better than textutil
     // and CoreText do.
     if office_available()

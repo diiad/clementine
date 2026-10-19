@@ -60,7 +60,13 @@ impl Default for Settings {
             dpi: 300,
             reveal_after: false,
             notify: true,
-            shortcut: "Alt+Super+KeyT".into(),
+            // ⌥⌘T on macOS; Win+Alt combinations are partly taken on Windows.
+            shortcut: if cfg!(windows) {
+                "Control+Alt+KeyT"
+            } else {
+                "Alt+Super+KeyT"
+            }
+            .into(),
             language: Language::System,
             haptics: true,
             haptic_strength: HapticStrength::Medium,

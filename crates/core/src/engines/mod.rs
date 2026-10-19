@@ -51,9 +51,32 @@ where
     Ok(out)
 }
 
+/// Folders where tools usually live but that a GUI app's `$PATH` may lack:
+/// Homebrew on macOS, the usual install folders on Windows.
+fn tool_dirs() -> Vec<PathBuf> {
+    if cfg!(windows) {
+        let mut dirs = Vec::new();
+        for var in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Some(pf) = std::env::var_os(var).map(PathBuf::from) {
+                dirs.push(pf.join("LibreOffice").join("program"));
+                dirs.push(pf.join("ffmpeg").join("bin"));
+            }
+        }
+        if let Some(local) = std::env::var_os("LOCALAPPDATA").map(PathBuf::from) {
+            dirs.push(local.join("Microsoft").join("WinGet").join("Links"));
+        }
+        dirs.push(PathBuf::from(r"C:\ffmpeg\bin"));
+        dirs
+    } else {
+        ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
+            .into_iter()
+            .map(PathBuf::from)
+            .collect()
+    }
+}
+
 /// Locate an executable: `$CLEMENTINE_<NAME>`, next to our own binary (bundled
-/// sidecar), Homebrew prefixes, then `$PATH`. GUI apps on macOS start with a
-/// minimal `$PATH`, hence the explicit Homebrew lookups.
+/// sidecar), well-known install folders, then `$PATH`.
 pub fn find_tool(name: &str) -> Option<PathBuf> {
     let env_key = format!("CLEMENTINE_{}", name.to_uppercase().replace('-', "_"));
     if let Some(p) = std::env::var_os(env_key).map(PathBuf::from) {
@@ -61,15 +84,20 @@ pub fn find_tool(name: &str) -> Option<PathBuf> {
             return Some(p);
         }
     }
+    let file = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    };
     let mut candidates = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            candidates.push(dir.join(name));
-            candidates.push(dir.join("../Resources").join(name));
+            candidates.push(dir.join(&file));
+            candidates.push(dir.join("../Resources").join(&file));
         }
     }
-    for prefix in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] {
-        candidates.push(Path::new(prefix).join(name));
+    for dir in tool_dirs() {
+        candidates.push(dir.join(&file));
     }
     candidates
         .into_iter()

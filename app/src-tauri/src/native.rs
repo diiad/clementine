@@ -58,12 +58,17 @@ pub fn center_on_cursor(window: &tauri::WebviewWindow, size: f64) {
 
 #[cfg(not(target_os = "macos"))]
 pub fn center_on_cursor(window: &tauri::WebviewWindow, size: f64) {
-    if let Ok(c) = window.cursor_position() {
-        let _ = window.set_position(tauri::PhysicalPosition::new(
-            c.x - size / 2.0,
-            c.y - size / 2.0,
-        ));
-    }
+    let Ok(c) = window.cursor_position() else {
+        return;
+    };
+    let scale = window
+        .monitor_from_point(c.x, c.y)
+        .ok()
+        .flatten()
+        .map(|m| m.scale_factor())
+        .unwrap_or(1.0);
+    let half = size * scale / 2.0;
+    let _ = window.set_position(tauri::PhysicalPosition::new(c.x - half, c.y - half));
 }
 
 /// wry always answers drags with `NSDragOperationCopy`. While ⌘ is held,
@@ -280,8 +285,15 @@ pub fn airdrop(_: &[PathBuf]) -> anyhow::Result<()> {
     anyhow::bail!("AirDrop is macOS only")
 }
 
+/// The files selected in the frontmost Explorer window.
+#[cfg(windows)]
+pub fn finder_selection() -> Vec<PathBuf> {
+    crate::windows::explorer_selection()
+}
+
 /// The files selected in the frontmost Finder window (asks for Automation
 /// permission the first time).
+#[cfg(not(windows))]
 pub fn finder_selection() -> Vec<PathBuf> {
     const SCRIPT: &str = r#"
         set out to ""
@@ -308,19 +320,35 @@ pub fn finder_selection() -> Vec<PathBuf> {
         .unwrap_or_default()
 }
 
+/// Copy a file or folder. On macOS `ditto` keeps metadata and resource forks.
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) -> anyhow::Result<()> {
+    if cfg!(target_os = "macos") {
+        let ok = std::process::Command::new("/usr/bin/ditto")
+            .arg(from)
+            .arg(to)
+            .status()?
+            .success();
+        anyhow::ensure!(ok, "could not copy {}", from.display());
+    } else if from.is_dir() {
+        std::fs::create_dir_all(to)?;
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            copy_tree(&entry.path(), &to.join(entry.file_name()))?;
+        }
+    } else {
+        std::fs::copy(from, to)?;
+    }
+    Ok(())
+}
+
 /// Move files into `dir`, falling back to copy + delete across volumes.
 pub fn move_into(paths: &[PathBuf], dir: &std::path::Path) -> anyhow::Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     for p in paths {
         let dest = clementine_core::unique_path(&dir.join(p.file_name().unwrap_or_default()));
         if std::fs::rename(p, &dest).is_err() {
-            // Different volume: let `ditto` copy (keeps metadata), then remove.
-            let ok = std::process::Command::new("/usr/bin/ditto")
-                .arg(p)
-                .arg(&dest)
-                .status()?
-                .success();
-            anyhow::ensure!(ok, "could not move {}", p.display());
+            // Different volume: copy, then remove the original.
+            copy_tree(p, &dest)?;
             if p.is_dir() {
                 std::fs::remove_dir_all(p)?;
             } else {

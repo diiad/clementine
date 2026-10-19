@@ -25,16 +25,9 @@ pub fn run(name: &str, inputs: &[PathBuf], _opts: &Options) -> Result<Vec<PathBu
             } else {
                 first.parent().map(Into::into).unwrap_or_default()
             };
-            exec(
-                "/usr/bin/open",
-                ["-a".as_ref(), "Terminal".as_ref(), dir.as_os_str()],
-            )?;
+            open_terminal(&dir)?;
         }
-        "reveal" => {
-            let mut args = vec![std::ffi::OsString::from("-R")];
-            args.extend(inputs.iter().map(|p| p.clone().into_os_string()));
-            exec("/usr/bin/open", args)?;
-        }
+        "reveal" => reveal(inputs)?,
         other => {
             return Err(Error::Unsupported {
                 op: format!("action:{other}"),
@@ -43,6 +36,23 @@ pub fn run(name: &str, inputs: &[PathBuf], _opts: &Options) -> Result<Vec<PathBu
         }
     }
     Ok(Vec::new())
+}
+
+#[cfg(target_os = "macos")]
+fn open_terminal(dir: &std::path::Path) -> Result<()> {
+    exec(
+        "/usr/bin/open",
+        ["-a".as_ref(), "Terminal".as_ref(), dir.as_os_str()],
+    )?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn reveal(paths: &[PathBuf]) -> Result<()> {
+    let mut args = vec![std::ffi::OsString::from("-R")];
+    args.extend(paths.iter().map(|p| p.clone().into_os_string()));
+    exec("/usr/bin/open", args)?;
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -82,15 +92,128 @@ fn copy_files(paths: &[PathBuf]) -> Result<()> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-fn copy_text(_: &str) -> Result<()> {
-    Err(Error::MissingTool(
-        "a clipboard",
-        "Only macOS is supported for now.",
-    ))
+// --- Windows ------------------------------------------------------------------
+
+/// Run a PowerShell snippet. `-EncodedCommand` (UTF-16LE, base64) sidesteps
+/// every quoting problem with paths.
+#[cfg(windows)]
+pub fn powershell(script: &str) -> Result<String> {
+    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let encoded = base64(&utf16);
+    let out = exec(
+        "powershell.exe",
+        [
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-EncodedCommand",
+            encoded.as_str(),
+        ],
+    )?;
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+fn base64(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut s = String::with_capacity(data.len().div_ceil(3) * 4);
+    for c in data.chunks(3) {
+        let n = (c[0] as u32) << 16
+            | (*c.get(1).unwrap_or(&0) as u32) << 8
+            | *c.get(2).unwrap_or(&0) as u32;
+        for i in 0..4 {
+            if i <= c.len() {
+                s.push(T[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                s.push('=');
+            }
+        }
+    }
+    s
+}
+
+/// A PowerShell single-quoted string literal.
+#[cfg(windows)]
+fn ps_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+#[cfg(windows)]
+fn copy_text(text: &str) -> Result<()> {
+    powershell(&format!("Set-Clipboard -Value {}", ps_quote(text)))?;
+    Ok(())
+}
+
+/// Put the files on the clipboard, so Ctrl+V in Explorer pastes copies.
+#[cfg(windows)]
+fn copy_files(paths: &[PathBuf]) -> Result<()> {
+    let list: Vec<String> = paths
+        .iter()
+        .map(|p| ps_quote(&p.to_string_lossy()))
+        .collect();
+    powershell(&format!("Set-Clipboard -LiteralPath {}", list.join(",")))?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn open_terminal(dir: &std::path::Path) -> Result<()> {
+    use std::process::Command;
+    // Windows Terminal when installed, otherwise a classic console.
+    let wt = Command::new("wt.exe").arg("-d").arg(dir).spawn();
+    if wt.is_err() {
+        Command::new("cmd.exe")
+            .args(["/C", "start", "", "/D"])
+            .arg(dir)
+            .arg("cmd.exe")
+            .spawn()?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn reveal(paths: &[PathBuf]) -> Result<()> {
+    // explorer.exe exits with 1 even on success: don't check its status.
+    if let Some(first) = paths.first() {
+        let mut arg = std::ffi::OsString::from("/select,");
+        arg.push(first);
+        std::process::Command::new("explorer.exe")
+            .arg(arg)
+            .spawn()?;
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+fn unsupported() -> Result<()> {
+    Err(Error::MissingTool(
+        "a desktop",
+        "Only macOS and Windows are supported.",
+    ))
+}
+#[cfg(not(any(target_os = "macos", windows)))]
+fn copy_text(_: &str) -> Result<()> {
+    unsupported()
+}
+#[cfg(not(any(target_os = "macos", windows)))]
 fn copy_files(_: &[PathBuf]) -> Result<()> {
-    copy_text("")
+    unsupported()
+}
+#[cfg(not(any(target_os = "macos", windows)))]
+fn open_terminal(_: &std::path::Path) -> Result<()> {
+    unsupported()
+}
+#[cfg(not(any(target_os = "macos", windows)))]
+fn reveal(_: &[PathBuf]) -> Result<()> {
+    unsupported()
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    #[test]
+    fn base64_matches_reference() {
+        assert_eq!(super::base64(b"Man"), "TWFu");
+        assert_eq!(super::base64(b"Ma"), "TWE=");
+        assert_eq!(super::base64(b"M"), "TQ==");
+    }
 }

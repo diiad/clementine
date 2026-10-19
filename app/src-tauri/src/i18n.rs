@@ -47,8 +47,8 @@ fn system() -> Lang {
 
 #[cfg(not(target_os = "macos"))]
 fn system() -> Lang {
-    match std::env::var("LANG") {
-        Ok(l) if l.starts_with("fr") => Lang::Fr,
+    match sys_locale::get_locale() {
+        Some(l) if l.starts_with("fr") => Lang::Fr,
         _ => Lang::En,
     }
 }
@@ -61,6 +61,11 @@ pub fn tr(lang: Lang, en: &'static str) -> &'static str {
     match en {
         // Tray menu
         "Open Wheel for Finder Selection" => "Ouvrir la roue pour la sélection du Finder",
+        "Open Wheel for Explorer Selection" => "Ouvrir la roue pour la sélection de l’Explorateur",
+        "Select files in File Explorer first." => {
+            "Sélectionnez d’abord des fichiers dans l’Explorateur."
+        }
+        "Open with Clémentine" => "Ouvrir avec Clémentine",
         "Show Float Shelf" => "Afficher l’étagère Float",
         "Enabled" => "Activé",
         "Settings…" => "Réglages…",

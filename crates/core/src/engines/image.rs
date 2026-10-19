@@ -17,6 +17,12 @@ const NATIVE: &[&str] = &[
     "jpg", "jpeg", "png", "webp", "tiff", "tif", "bmp", "gif", "ico", "tga",
 ];
 
+/// Whether [`decode`] can read this extension here. HEIC and AVIF go through
+/// macOS's `sips`.
+pub fn can_decode(e: &str) -> bool {
+    e == "svg" || NATIVE.contains(&e) || cfg!(target_os = "macos")
+}
+
 pub fn decode(path: &Path, dpi: u32) -> Result<DynamicImage> {
     let e = ext(path);
     if e == "svg" {
@@ -269,6 +275,9 @@ mod tests {
         let opts = Options::default();
         for target in ["jpg", "webp", "bmp", "tiff", "gif", "ico", "avif"] {
             let out = convert(&src, target, &opts).unwrap();
+            if !can_decode(target) {
+                continue; // AVIF is written everywhere but read through macOS
+            }
             let back = decode_native(&out).or_else(|_| decode(&out, 72)).unwrap();
             assert_eq!((back.width(), back.height()), (40, 20), "{target}");
         }

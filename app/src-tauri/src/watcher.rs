@@ -6,6 +6,7 @@
 //! starts a drag session.
 
 use std::path::PathBuf;
+#[cfg(target_os = "macos")]
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -37,6 +38,7 @@ impl Mods {
 }
 
 #[derive(Debug)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub enum Event {
     /// A file drag is in progress and the modifiers changed.
     Drag { paths: Vec<PathBuf>, mods: Mods },

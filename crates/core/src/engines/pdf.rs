@@ -1,4 +1,6 @@
 //! PDF handling through PDFKit and CoreGraphics (macOS only).
+// The macOS engine is all there is; elsewhere only the stubs remain.
+#![cfg_attr(not(target_os = "macos"), allow(unused))]
 
 use crate::kind::{ext, kind_of_ext, Kind};
 use crate::{output_path, Error, Options, Progress, Result};
@@ -302,6 +304,11 @@ macro_rules! macos_only {
             mac::unsupported()
         }
     }};
+}
+
+/// PDF reading and writing need PDFKit (macOS).
+pub fn available() -> bool {
+    cfg!(target_os = "macos")
 }
 
 pub fn page_count(input: &Path) -> Result<usize> {

@@ -3,7 +3,7 @@
 <h1 align="center">Clémentine</h1>
 
 <p align="center"><b>Drag a file. Hold a key. Drop it on the wheel.</b><br>
-An open-source, offline file converter for macOS, written in Rust.</p>
+An open-source, offline file converter for macOS (and, in preview, Windows), written in Rust.</p>
 
 ---
 
@@ -59,6 +59,21 @@ Any file or folder can also be zipped.
 3. Optional: install [LibreOffice](https://www.libreoffice.org/) (`brew install --cask libreoffice`) for slides, spreadsheet → PDF, and higher-fidelity documents: DOCX/ODT/PDF output is then laid out by LibreOffice Writer (real tables, lists, images) instead of textutil + CoreText.
 
 Builds aren't notarised yet. The first time you open the app, right-click it and choose **Open**.
+
+### Windows (preview)
+
+Windows 10 and 11 get a first version. Windows has no system-wide drag to watch, so the wheel opens differently:
+
+- **Right-click** files in File Explorer → **Open with Clémentine** (under *Show more options* on Windows 11).
+- Or select files in File Explorer and press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd>, changeable in Settings.
+
+Then pick a slice with the mouse or the keyboard, as in click mode on macOS.
+
+Install the `.exe` setup from [Releases](../../releases), then `winget install Gyan.FFmpeg` for audio and video and `winget install TheDocumentFoundation.LibreOffice` for documents and slides.
+
+| Available | Not yet on Windows |
+|---|---|
+| Images (JPG, PNG, WebP, AVIF output, SVG…), audio, video, documents and slides via LibreOffice, spreadsheets, subtitles, archives; Float, Copy, Move, Copy path, Terminal | Drag-and-hold, PDF tools and PDF/HEIC/ICNS conversion, OCR and background removal, AirDrop, haptics |
 
 ### Build from source
 

@@ -6,6 +6,8 @@ mod native;
 mod settings;
 mod watcher;
 mod wheel;
+#[cfg(windows)]
+mod windows;
 
 use clementine_core::{operations, Category, Operation};
 use i18n::{tr, Lang};
@@ -85,6 +87,55 @@ fn hover_changed(app: &AppHandle, index: i64) {
     if on {
         native::haptic(strength);
     }
+}
+
+/// The system file manager, as named in menus and messages.
+const OPEN_SELECTION: &str = if cfg!(windows) {
+    "Open Wheel for Explorer Selection"
+} else {
+    "Open Wheel for Finder Selection"
+};
+const SELECT_FIRST: &str = if cfg!(windows) {
+    "Select files in File Explorer first."
+} else {
+    "Select files in Finder first."
+};
+
+/// Files handed to the app on the command line (`--wheel`) or, on Windows,
+/// by the right-click menu, which starts one process per selected file.
+/// Gather what arrives within a short window into one selection.
+static PENDING: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+static PENDING_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn queue_selection(app: &AppHandle, paths: Vec<PathBuf>) {
+    PENDING.lock().unwrap().extend(paths);
+    let generation = PENDING_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(350));
+        if PENDING_GEN.load(Ordering::SeqCst) != generation {
+            return; // more files arrived; the newest thread opens the wheel
+        }
+        let mut paths = std::mem::take(&mut *PENDING.lock().unwrap());
+        paths.dedup();
+        if paths.is_empty() {
+            return;
+        }
+        let h = app.clone();
+        let _ = app.run_on_main_thread(move || open_wheel(&h, paths, Category::Convert, true));
+    });
+}
+
+/// Paths following `--wheel` in a command line.
+fn wheel_args(args: &[String]) -> Option<Vec<PathBuf>> {
+    let i = args.iter().position(|a| a == "--wheel")?;
+    Some(
+        args[i + 1..]
+            .iter()
+            .map(PathBuf::from)
+            .filter(|p| p.exists())
+            .collect(),
+    )
 }
 
 fn lang(app: &AppHandle) -> Lang {
@@ -440,11 +491,7 @@ fn open_for_selection(app: &AppHandle) {
         let h = app.clone();
         let _ = app.run_on_main_thread(move || {
             if paths.is_empty() {
-                notify(
-                    &h,
-                    "Clémentine",
-                    tr(lang(&h), "Select files in Finder first."),
-                );
+                notify(&h, "Clémentine", tr(lang(&h), SELECT_FIRST));
             } else {
                 open_wheel(&h, paths, Category::Convert, true);
             }
@@ -467,18 +514,19 @@ fn open_float(app: &AppHandle, paths: Vec<PathBuf>) {
     let window = match app.get_webview_window("float") {
         Some(w) => w,
         None => {
-            let Ok(w) =
+            let builder =
                 WebviewWindowBuilder::new(app, "float", WebviewUrl::App("float.html".into()))
                     .title("Float")
                     .inner_size(260.0, 320.0)
                     .min_inner_size(200.0, 120.0)
                     .always_on_top(true)
                     .visible_on_all_workspaces(true)
-                    .skip_taskbar(true)
-                    .title_bar_style(tauri::TitleBarStyle::Overlay)
-                    .hidden_title(true)
-                    .build()
-            else {
+                    .skip_taskbar(true);
+            #[cfg(target_os = "macos")]
+            let builder = builder
+                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                .hidden_title(true);
+            let Ok(w) = builder.build() else {
                 return;
             };
             w
@@ -615,6 +663,8 @@ async fn choose_folder(app: AppHandle) -> Option<String> {
 #[derive(Serialize)]
 struct Engines {
     version: &'static str,
+    /// `macos` or `windows`, to adapt the Settings page.
+    platform: &'static str,
     ffmpeg: Option<String>,
     libreoffice: Option<String>,
     autostart: bool,
@@ -623,6 +673,7 @@ struct Engines {
 #[tauri::command]
 fn engine_status(app: AppHandle) -> Engines {
     Engines {
+        platform: std::env::consts::OS,
         version: env!("CARGO_PKG_VERSION"),
         ffmpeg: clementine_core::engines::find_tool("ffmpeg").map(|p| p.display().to_string()),
         libreoffice: clementine_core::engines::document::office().map(|p| p.display().to_string()),
@@ -724,7 +775,7 @@ fn apply_tray_visibility(app: &AppHandle) {
 fn translate_tray(app: &AppHandle) {
     let l = lang(app);
     if let Some(t) = app.try_state::<TrayItems>() {
-        let _ = t.open.set_text(tr(l, "Open Wheel for Finder Selection"));
+        let _ = t.open.set_text(tr(l, OPEN_SELECTION));
         let _ = t.float.set_text(tr(l, "Show Float Shelf"));
         let _ = t.toggle.set_text(tr(l, "Enabled"));
         let _ = t.settings.set_text(tr(l, "Settings…"));
@@ -735,13 +786,7 @@ fn translate_tray(app: &AppHandle) {
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let enabled = state(app).settings.lock().unwrap().enabled;
     let l = lang(app);
-    let open = MenuItem::with_id(
-        app,
-        "open",
-        tr(l, "Open Wheel for Finder Selection"),
-        true,
-        None::<&str>,
-    )?;
+    let open = MenuItem::with_id(app, "open", tr(l, OPEN_SELECTION), true, None::<&str>)?;
     let toggle =
         CheckMenuItem::with_id(app, "toggle", tr(l, "Enabled"), true, enabled, None::<&str>)?;
     let settings = MenuItem::with_id(
@@ -805,7 +850,18 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn main() {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // A second launch hands its arguments to the running app: files from the
+    // right-click menu, or nothing (opened from the Start menu) → Settings.
+    #[cfg(windows)]
+    let builder =
+        builder.plugin(tauri_plugin_single_instance::init(
+            |app, args, _cwd| match wheel_args(&args) {
+                Some(files) => queue_selection(app, files),
+                None => open_settings(app),
+            },
+        ));
+    let app = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -854,24 +910,17 @@ fn main() {
             }
             let watcher_handle = handle.clone();
             watcher::spawn(move |e| on_watch_event(&watcher_handle, e));
-            // `clementine-app --wheel <files…>`: open the wheel right away (handy for development).
+            #[cfg(windows)]
+            if let Err(e) =
+                windows::register_context_menu(tr(lang(&handle), "Open with Clémentine"))
+            {
+                eprintln!("could not add the right-click menu entry: {e}");
+            }
+            // `clementine-app --wheel <files…>`: open the wheel for these files
+            // (the Windows right-click menu, and handy for development).
             let args: Vec<String> = std::env::args().collect();
-            if let Some(i) = args.iter().position(|a| a == "--wheel") {
-                let files: Vec<PathBuf> = args[i + 1..]
-                    .iter()
-                    .map(PathBuf::from)
-                    .filter(|p| p.exists())
-                    .collect();
-                if !files.is_empty() {
-                    let h = handle.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(Duration::from_millis(600));
-                        let h2 = h.clone();
-                        let _ = h.run_on_main_thread(move || {
-                            open_wheel(&h2, files, Category::Convert, true)
-                        });
-                    });
-                }
+            if let Some(files) = wheel_args(&args) {
+                queue_selection(&handle, files);
             } else if first_run {
                 open_settings(&handle);
             }
@@ -880,7 +929,7 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building Clémentine");
 
-    app.run(|app, event| match event {
+    app.run(|_app, event| match event {
         // Closing the settings window must not quit a menu-bar app.
         RunEvent::ExitRequested {
             api, code: None, ..
@@ -888,7 +937,7 @@ fn main() {
         // Launching the app again (Finder, Spotlight…) opens Settings: the
         // way back when the menu-bar icon is hidden.
         #[cfg(target_os = "macos")]
-        RunEvent::Reopen { .. } => open_settings(app),
+        RunEvent::Reopen { .. } => open_settings(_app),
         _ => {}
     });
 }

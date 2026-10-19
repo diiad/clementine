@@ -7,7 +7,11 @@ use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-const HINT: &str = "Install it with `brew install ffmpeg`, or set CLEMENTINE_FFMPEG.";
+const HINT: &str = if cfg!(windows) {
+    "Install it with `winget install Gyan.FFmpeg`, or set CLEMENTINE_FFMPEG."
+} else {
+    "Install it with `brew install ffmpeg`, or set CLEMENTINE_FFMPEG."
+};
 
 fn ffmpeg() -> Result<PathBuf> {
     find_tool("ffmpeg").ok_or(Error::MissingTool("ffmpeg", HINT))
