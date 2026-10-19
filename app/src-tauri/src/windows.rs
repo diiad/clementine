@@ -50,3 +50,174 @@ pub fn register_context_menu(label: &str) -> std::io::Result<()> {
     }
     Ok(())
 }
+
+/// A file drag over the wheel, in screen pixels.
+pub enum Drag {
+    Enter(Vec<PathBuf>, (i32, i32)),
+    Over((i32, i32)),
+    Leave,
+    Drop(Vec<PathBuf>, (i32, i32)),
+}
+
+/// The listener returns whether it took a drop.
+pub type DragListener = std::rc::Rc<dyn Fn(Drag) -> bool>;
+
+/// Our own OLE drop target for the wheel, in place of wry's. wry leaves the
+/// drop effect at whatever the source allowed, which Explorer can read as
+/// "moved" and then delete the originals; this one always answers "copy".
+mod drop_target {
+    use super::{Drag, DragListener};
+    use std::cell::{Cell, RefCell};
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use std::path::PathBuf;
+    use win::core::{implement, Ref, BOOL};
+    use win::Win32::Foundation::{HWND, LPARAM, POINTL};
+    use win::Win32::System::Com::{IDataObject, DVASPECT_CONTENT, FORMATETC, TYMED_HGLOBAL};
+    use win::Win32::System::Ole::{
+        IDropTarget, IDropTarget_Impl, RegisterDragDrop, ReleaseStgMedium, RevokeDragDrop,
+        CF_HDROP, DROPEFFECT, DROPEFFECT_COPY, DROPEFFECT_NONE,
+    };
+    use win::Win32::System::SystemServices::MODIFIERKEYS_FLAGS;
+    use win::Win32::UI::Shell::{DragQueryFileW, HDROP};
+    use win::Win32::UI::WindowsAndMessaging::EnumChildWindows;
+
+    thread_local! {
+        static TARGETS: RefCell<Vec<IDropTarget>> = const { RefCell::new(Vec::new()) };
+    }
+
+    /// The file paths in a drag, or None when it carries no files.
+    fn files(data: Ref<'_, IDataObject>) -> Option<Vec<PathBuf>> {
+        let data = data.as_ref()?;
+        let format = FORMATETC {
+            cfFormat: CF_HDROP.0,
+            ptd: std::ptr::null_mut(),
+            dwAspect: DVASPECT_CONTENT.0,
+            lindex: -1,
+            tymed: TYMED_HGLOBAL.0 as u32,
+        };
+        unsafe {
+            let mut medium = data.GetData(&format).ok()?;
+            let hdrop = HDROP(medium.u.hGlobal.0);
+            let mut out = Vec::new();
+            for i in 0..DragQueryFileW(hdrop, u32::MAX, None) {
+                let len = DragQueryFileW(hdrop, i, None) as usize;
+                let mut buf = vec![0u16; len + 1];
+                DragQueryFileW(hdrop, i, Some(&mut buf));
+                out.push(OsString::from_wide(&buf[..len]).into());
+            }
+            ReleaseStgMedium(&mut medium);
+            Some(out).filter(|f: &Vec<PathBuf>| !f.is_empty())
+        }
+    }
+
+    #[implement(IDropTarget)]
+    struct Target {
+        listener: DragListener,
+        /// The drag in progress carries files.
+        valid: Cell<bool>,
+    }
+
+    impl Target {
+        fn effect(&self) -> DROPEFFECT {
+            if self.valid.get() {
+                DROPEFFECT_COPY
+            } else {
+                DROPEFFECT_NONE
+            }
+        }
+    }
+
+    #[allow(non_snake_case)]
+    impl IDropTarget_Impl for Target_Impl {
+        fn DragEnter(
+            &self,
+            data: Ref<'_, IDataObject>,
+            _keys: MODIFIERKEYS_FLAGS,
+            pt: &POINTL,
+            effect: *mut DROPEFFECT,
+        ) -> win::core::Result<()> {
+            let paths = files(data);
+            self.valid.set(paths.is_some());
+            if let Some(paths) = paths {
+                (self.listener)(Drag::Enter(paths, (pt.x, pt.y)));
+            }
+            unsafe { *effect = self.effect() };
+            Ok(())
+        }
+
+        fn DragOver(
+            &self,
+            _keys: MODIFIERKEYS_FLAGS,
+            pt: &POINTL,
+            effect: *mut DROPEFFECT,
+        ) -> win::core::Result<()> {
+            if self.valid.get() {
+                (self.listener)(Drag::Over((pt.x, pt.y)));
+            }
+            unsafe { *effect = self.effect() };
+            Ok(())
+        }
+
+        fn DragLeave(&self) -> win::core::Result<()> {
+            if self.valid.replace(false) {
+                (self.listener)(Drag::Leave);
+            }
+            Ok(())
+        }
+
+        fn Drop(
+            &self,
+            data: Ref<'_, IDataObject>,
+            _keys: MODIFIERKEYS_FLAGS,
+            pt: &POINTL,
+            effect: *mut DROPEFFECT,
+        ) -> win::core::Result<()> {
+            let taken = self.valid.replace(false)
+                && (self.listener)(Drag::Drop(files(data).unwrap_or_default(), (pt.x, pt.y)));
+            unsafe {
+                *effect = if taken {
+                    DROPEFFECT_COPY
+                } else {
+                    DROPEFFECT_NONE
+                }
+            };
+            Ok(())
+        }
+    }
+
+    /// Register on the window and on every child, where WebView2 puts its
+    /// own target. Call on the main thread.
+    pub fn install(hwnd: isize, listener: DragListener) {
+        let root = HWND(hwnd as _);
+        let mut hwnds = vec![root];
+        unsafe extern "system" fn collect(child: HWND, lparam: LPARAM) -> BOOL {
+            (*(lparam.0 as *mut Vec<HWND>)).push(child);
+            true.into()
+        }
+        unsafe {
+            let _ = EnumChildWindows(
+                Some(root),
+                Some(collect),
+                LPARAM(&mut hwnds as *mut _ as isize),
+            );
+        }
+        let targets = hwnds
+            .into_iter()
+            .filter_map(|h| {
+                let target: IDropTarget = Target {
+                    listener: listener.clone(),
+                    valid: Cell::new(false),
+                }
+                .into();
+                unsafe {
+                    let _ = RevokeDragDrop(h);
+                    RegisterDragDrop(h, &target).ok().map(|_| target)
+                }
+            })
+            .collect();
+        TARGETS.with(|t| *t.borrow_mut() = targets);
+    }
+}
+
+pub use drop_target::install as install_drop_target;

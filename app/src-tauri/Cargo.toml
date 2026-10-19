@@ -26,7 +26,23 @@ drag = "2"
 
 [target.'cfg(windows)'.dependencies]
 tauri-plugin-single-instance = "2"
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_System_Threading",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_WindowsAndMessaging",
+] }
+# COM drop target for the wheel (same versions as wry). Renamed so it does
+# not clash with the app's own `windows` module.
+win = { package = "windows", version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_System_Ole",
+  "Win32_System_SystemServices",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+windows-core = "0.62"
 winreg = "0.55"
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]

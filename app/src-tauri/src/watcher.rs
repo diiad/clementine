@@ -4,9 +4,14 @@
 //! modifier flags (`+[NSEvent pressedMouseButtons]`, `+[NSEvent modifierFlags]`)
 //! and watch the drag pasteboard, whose change count bumps whenever any app
 //! starts a drag session.
+//!
+//! Windows has no drag pasteboard to read. We watch for a left-button drag
+//! that starts in File Explorer or on the desktop, report the keys with no
+//! paths, and the wheel's drop target picks the files up when the drag
+//! enters it.
 
 use std::path::PathBuf;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -38,9 +43,10 @@ impl Mods {
 }
 
 #[derive(Debug)]
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 pub enum Event {
-    /// A file drag is in progress and the modifiers changed.
+    /// A file drag is in progress and the modifiers changed. On Windows the
+    /// paths are not known yet and `paths` is empty.
     Drag { paths: Vec<PathBuf>, mods: Mods },
     /// The mouse button was released (drop happened somewhere, or cancelled).
     Ended,
@@ -92,6 +98,77 @@ mod mac {
     }
 }
 
+#[cfg(windows)]
+mod win {
+    use super::*;
+    use windows_sys::Win32::Foundation::{CloseHandle, POINT};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, VK_CONTROL, VK_LBUTTON, VK_LWIN, VK_MENU, VK_RBUTTON, VK_RWIN, VK_SHIFT,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetAncestor, GetCursorPos, GetSystemMetrics, GetWindowThreadProcessId, WindowFromPoint,
+        GA_ROOT, SM_CXDRAG, SM_CYDRAG, SM_SWAPBUTTON,
+    };
+
+    fn pressed(vk: u16) -> bool {
+        unsafe { GetAsyncKeyState(vk as i32) as u16 & 0x8000 != 0 }
+    }
+
+    /// The primary button, which is the right one for left-handed setups.
+    pub fn mouse_down() -> bool {
+        let swapped = unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0;
+        pressed(if swapped { VK_RBUTTON } else { VK_LBUTTON })
+    }
+
+    /// ⌘ maps to the Windows key and ⌥ to Alt, as on Mac keyboards.
+    pub fn mods() -> Mods {
+        Mods {
+            shift: pressed(VK_SHIFT),
+            command: pressed(VK_LWIN) || pressed(VK_RWIN),
+            control: pressed(VK_CONTROL),
+            option: pressed(VK_MENU),
+        }
+    }
+
+    pub fn cursor() -> (i32, i32) {
+        let mut p = POINT { x: 0, y: 0 };
+        unsafe { GetCursorPos(&mut p) };
+        (p.x, p.y)
+    }
+
+    /// How far the pointer must travel before Windows calls it a drag.
+    pub fn drag_threshold() -> (i32, i32) {
+        unsafe { (GetSystemMetrics(SM_CXDRAG), GetSystemMetrics(SM_CYDRAG)) }
+    }
+
+    /// Whether the window under the point belongs to explorer.exe, which runs
+    /// both File Explorer windows and the desktop.
+    pub fn explorer_at((x, y): (i32, i32)) -> bool {
+        unsafe {
+            let hwnd = GetAncestor(WindowFromPoint(POINT { x, y }), GA_ROOT);
+            if hwnd.is_null() {
+                return false;
+            }
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(hwnd, &mut pid);
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if process.is_null() {
+                return false;
+            }
+            let mut buf = [0u16; 1024];
+            let mut len = buf.len() as u32;
+            let ok = QueryFullProcessImageNameW(process, 0, buf.as_mut_ptr(), &mut len) != 0;
+            CloseHandle(process);
+            ok && String::from_utf16_lossy(&buf[..len as usize])
+                .to_ascii_lowercase()
+                .ends_with("\\explorer.exe")
+        }
+    }
+}
+
 /// Spawn the polling thread. `on_event` is called from that thread.
 pub fn spawn(on_event: impl Fn(Event) + Send + 'static) {
     #[cfg(target_os = "macos")]
@@ -136,6 +213,51 @@ pub fn spawn(on_event: impl Fn(Event) + Send + 'static) {
             }
         })
         .expect("spawn drag watcher");
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    std::thread::Builder::new()
+        .name("drag-watcher".into())
+        .spawn(move || {
+            let mut was_down = false;
+            // Some(start) while the button is held after pressing it in Explorer.
+            let mut origin: Option<(i32, i32)> = None;
+            let mut dragging = false;
+            let mut last_mods = (false, false, false, false);
+            loop {
+                let down = win::mouse_down();
+                if down && !was_down {
+                    let at = win::cursor();
+                    origin = win::explorer_at(at).then_some(at);
+                    dragging = false;
+                }
+                if down {
+                    if let (false, Some((x0, y0))) = (dragging, origin) {
+                        let (x, y) = win::cursor();
+                        let (dx, dy) = win::drag_threshold();
+                        dragging = (x - x0).abs() > dx || (y - y0).abs() > dy;
+                    }
+                    if dragging {
+                        let m = win::mods();
+                        let key = (m.shift, m.command, m.control, m.option);
+                        if key != last_mods {
+                            last_mods = key;
+                            on_event(Event::Drag {
+                                paths: Vec::new(),
+                                mods: m,
+                            });
+                        }
+                    }
+                } else if was_down {
+                    if std::mem::take(&mut dragging) {
+                        on_event(Event::Ended);
+                    }
+                    origin = None;
+                    last_mods = (false, false, false, false);
+                }
+                was_down = down;
+                std::thread::sleep(Duration::from_millis(if down { 16 } else { 40 }));
+            }
+        })
+        .expect("spawn drag watcher");
+    #[cfg(not(any(target_os = "macos", windows)))]
     let _ = on_event;
 }

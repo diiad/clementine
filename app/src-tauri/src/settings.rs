@@ -52,7 +52,12 @@ impl Default for Settings {
         Self {
             enabled: true,
             convert_key: Modifier::Shift,
-            tools_key: Modifier::Command,
+            // The Windows key opens the Start menu when released: use Alt.
+            tools_key: if cfg!(windows) {
+                Modifier::Option
+            } else {
+                Modifier::Command
+            },
             actions_key: Modifier::Control,
             output: OutputLocation::Beside,
             custom_dir: None,
@@ -77,10 +82,20 @@ impl Default for Settings {
 
 impl Settings {
     pub fn load(path: &Path) -> Self {
-        std::fs::read_to_string(path)
+        #[allow(unused_mut)]
+        let mut s: Self = std::fs::read_to_string(path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // Windows builds before the drag trigger saved the macOS default.
+        #[cfg(windows)]
+        if s.tools_key == Modifier::Command
+            && s.convert_key != Modifier::Option
+            && s.actions_key != Modifier::Option
+        {
+            s.tools_key = Modifier::Option;
+        }
+        s
     }
 
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {

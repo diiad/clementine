@@ -67,6 +67,10 @@ const t = (en) => (lang === "fr" && FR[en]) || en;
 // Windows wording for the few macOS-specific strings, applied before
 // translation (FR has entries for both).
 const WINDOWS_TEXT = {
+  "Drag a file, hold a key, drop it on the wheel. Everything runs on this Mac.":
+    "Drag a file, hold a key, drop it on the wheel. Everything runs on this PC.",
+  "Hold one of these while dragging files.":
+    "Hold one of these while dragging files from the desktop or File Explorer.",
   "Wheel for Finder selection": "Wheel for Explorer selection",
   "Reveal results in Finder": "Show results in File Explorer",
   "Hide menu bar icon": "Hide tray icon",
@@ -76,6 +80,10 @@ const WINDOWS_TEXT = {
     "Click, then press the new shortcut. Backspace clears it, Esc cancels.",
 };
 Object.assign(FR, {
+  "Drag a file, hold a key, drop it on the wheel. Everything runs on this PC.":
+    "Glissez un fichier, maintenez une touche, lâchez-le sur la roue. Tout se passe sur ce PC.",
+  "Hold one of these while dragging files from the desktop or File Explorer.":
+    "Maintenez l’une d’elles pendant que vous glissez des fichiers depuis le bureau ou l’Explorateur.",
   "Wheel for Explorer selection": "Roue pour la sélection de l’Explorateur",
   "Show results in File Explorer": "Afficher les résultats dans l’Explorateur",
   "Hide tray icon": "Masquer l’icône de la zone de notification",
@@ -88,6 +96,10 @@ Object.assign(FR, {
 function adaptToPlatform() {
   if (platform !== "windows") return;
   document.body.classList.add("windows");
+  const winKeys = { shift: "Shift", command: "Win", control: "Ctrl", option: "Alt" };
+  for (const id of ["convert_key", "tools_key", "actions_key"]) {
+    for (const o of $(id).options) o.textContent = winKeys[o.value];
+  }
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const key = n.nodeValue.trim();

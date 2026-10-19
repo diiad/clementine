@@ -210,7 +210,9 @@ listen("wheel:show", ({ payload }) => {
     lang: payload.lang,
   };
   render();
-  requestAnimationFrame(() => svg.classList.add("shown"));
+  // Pending: open under the pointer but invisible until the drag brings files.
+  if (payload.pending) svg.classList.remove("shown");
+  else requestAnimationFrame(() => svg.classList.add("shown"));
 });
 
 listen("wheel:hide", () => {

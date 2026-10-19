@@ -50,6 +50,8 @@ struct AppState {
 
 #[derive(Clone, Serialize)]
 struct ShowPayload {
+    /// Shown but not drawn yet: the files arrive with the drag (Windows).
+    pending: bool,
     category: Category,
     title: String,
     segments: Vec<Segment>,
@@ -170,8 +172,11 @@ fn wheel_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .shadow(false)
         .focused(false)
         .visible(false)
-        .accept_first_mouse(true)
-        .build()?;
+        .accept_first_mouse(true);
+    // Windows uses our own drop target, installed when the wheel shows.
+    #[cfg(windows)]
+    let w = w.disable_drag_drop_handler();
+    let w = w.build()?;
     native::make_overlay(&w);
     native::accept_any_drag_operation();
     let handle = app.clone();
@@ -196,6 +201,7 @@ fn open_wheel(app: &AppHandle, paths: Vec<PathBuf>, category: Category, click_mo
     }
     let segments = wheel::layout(&ops);
     let payload = ShowPayload {
+        pending: paths.is_empty() && !click_mode,
         lang,
         category,
         title: title_for(&paths, lang),
@@ -217,6 +223,9 @@ fn open_wheel(app: &AppHandle, paths: Vec<PathBuf>, category: Category, click_mo
     drop(s);
     if !was_visible {
         native::center_on_cursor(&window, wheel::SIZE);
+        // WebView2 may have (re)created its child windows since last time.
+        #[cfg(windows)]
+        install_drop_target(app, &window);
     }
     HOVER.store(-1, Ordering::Relaxed);
     let _ = window.emit("wheel:show", payload);
@@ -240,6 +249,14 @@ fn hide_wheel(app: &AppHandle) {
     }
 }
 
+/// A file drag over the wheel, in logical window coordinates.
+enum WheelDrag {
+    Enter(Vec<PathBuf>, f64, f64),
+    Over(f64, f64),
+    Leave,
+    Drop(Vec<PathBuf>, f64, f64),
+}
+
 fn on_wheel_event(app: &AppHandle, event: &WindowEvent) {
     let WindowEvent::DragDrop(dd) = event else {
         return;
@@ -248,45 +265,132 @@ fn on_wheel_event(app: &AppHandle, event: &WindowEvent) {
         return;
     };
     let scale = window.scale_factor().unwrap_or(2.0);
-    let locate = |p: &PhysicalPosition<f64>| {
+    let local = |p: &PhysicalPosition<f64>| {
         // On macOS wry reports drag positions in points even though Tauri
         // types them as physical pixels.
-        let l = if cfg!(target_os = "macos") {
-            tauri::LogicalPosition::new(p.x, p.y)
+        if cfg!(target_os = "macos") {
+            (p.x, p.y)
         } else {
-            p.to_logical::<f64>(scale)
-        };
+            let l = p.to_logical::<f64>(scale);
+            (l.x, l.y)
+        }
+    };
+    let drag = match dd {
+        DragDropEvent::Enter { paths, position } => {
+            let (x, y) = local(position);
+            WheelDrag::Enter(paths.clone(), x, y)
+        }
+        DragDropEvent::Over { position } => {
+            let (x, y) = local(position);
+            WheelDrag::Over(x, y)
+        }
+        DragDropEvent::Leave => WheelDrag::Leave,
+        DragDropEvent::Drop { paths, position } => {
+            let (x, y) = local(position);
+            WheelDrag::Drop(paths.clone(), x, y)
+        }
+        _ => return,
+    };
+    on_wheel_drag(app, drag);
+}
+
+/// Returns whether a drop was taken.
+fn on_wheel_drag(app: &AppHandle, drag: WheelDrag) -> bool {
+    let Some(window) = app.get_webview_window("wheel") else {
+        return false;
+    };
+    let locate = |x: f64, y: f64| {
         let st = state(app);
         let s = st.session.lock().unwrap();
-        wheel::hit(&s.segments, l.x, l.y)
+        wheel::hit(&s.segments, x, y)
     };
-    match dd {
-        DragDropEvent::Enter { position, .. } | DragDropEvent::Over { position } => {
-            let index = match locate(position) {
-                Hit::Segment(i) => i as i64,
-                Hit::Hub => -2,
-                Hit::Outside => -1,
+    let hover = |x: f64, y: f64| {
+        let index = match locate(x, y) {
+            Hit::Segment(i) => i as i64,
+            Hit::Hub => -2,
+            Hit::Outside => -1,
+        };
+        hover_changed(app, index);
+        let _ = window.emit("wheel:hover", index);
+    };
+    match drag {
+        WheelDrag::Enter(paths, x, y) => {
+            // On Windows the wheel opens before it knows the files: fill it
+            // in now that the drag brings them.
+            let pending = {
+                let st = state(app);
+                let s = st.session.lock().unwrap();
+                s.category
+                    .filter(|_| s.visible && !s.busy && s.paths.is_empty())
             };
-            hover_changed(app, index);
-            let _ = window.emit("wheel:hover", index);
+            if let (Some(category), false) = (pending, paths.is_empty()) {
+                open_wheel(app, paths, category, false);
+            }
+            hover(x, y);
+            false
         }
-        DragDropEvent::Leave => {
+        WheelDrag::Over(x, y) => {
+            hover(x, y);
+            false
+        }
+        WheelDrag::Leave => {
             HOVER.store(-1, Ordering::Relaxed);
             let _ = window.emit("wheel:hover", -1);
+            false
         }
-        DragDropEvent::Drop { paths, position } => match locate(position) {
+        WheelDrag::Drop(paths, x, y) => match locate(x, y) {
             Hit::Segment(i) => {
                 let paths = if paths.is_empty() {
                     state(app).session.lock().unwrap().paths.clone()
                 } else {
-                    paths.clone()
+                    paths
                 };
                 start_job(app, i, paths);
+                true
             }
-            _ => hide_wheel(app),
+            _ => {
+                hide_wheel(app);
+                false
+            }
         },
-        _ => {}
     }
+}
+
+/// Replace wry's drop target on the wheel with ours (see `windows.rs`).
+#[cfg(windows)]
+fn install_drop_target(app: &AppHandle, window: &WebviewWindow) {
+    let Ok(hwnd) = window.hwnd() else {
+        return;
+    };
+    let handle = app.clone();
+    windows::install_drop_target(
+        hwnd.0 as isize,
+        std::rc::Rc::new(move |drag| {
+            let Some(w) = handle.get_webview_window("wheel") else {
+                return false;
+            };
+            let scale = w.scale_factor().unwrap_or(1.0);
+            let origin = w.inner_position().unwrap_or_default();
+            let local =
+                |(x, y): (i32, i32)| ((x - origin.x) as f64 / scale, (y - origin.y) as f64 / scale);
+            let drag = match drag {
+                windows::Drag::Enter(paths, p) => {
+                    let (x, y) = local(p);
+                    WheelDrag::Enter(paths, x, y)
+                }
+                windows::Drag::Over(p) => {
+                    let (x, y) = local(p);
+                    WheelDrag::Over(x, y)
+                }
+                windows::Drag::Leave => WheelDrag::Leave,
+                windows::Drag::Drop(paths, p) => {
+                    let (x, y) = local(p);
+                    WheelDrag::Drop(paths, x, y)
+                }
+            };
+            on_wheel_drag(&handle, drag)
+        }),
+    );
 }
 
 // --- Jobs ----------------------------------------------------------------------
@@ -449,10 +553,16 @@ fn on_watch_event(app: &AppHandle, event: watcher::Event) {
                     }
                     settings.category_for(&mods)
                 };
-                let (visible, current, busy) = {
+                let (visible, current, busy, known) = {
                     let st = state(&handle);
                     let s = st.session.lock().unwrap();
-                    (s.visible, s.category, s.busy)
+                    (s.visible, s.category, s.busy, s.paths.clone())
+                };
+                // Windows reports the keys before it knows the files.
+                let paths = if paths.is_empty() && visible {
+                    known
+                } else {
+                    paths
                 };
                 // Releasing the key keeps the wheel open, like Tangerine; a
                 // different key switches wheels.
