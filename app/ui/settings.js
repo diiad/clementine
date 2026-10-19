@@ -36,6 +36,10 @@ const FR = {
   "Reveal results in Finder": "Afficher les résultats dans le Finder",
   "Notify when long jobs finish": "Notifier à la fin des tâches longues",
   "Haptic feedback on the trackpad": "Retour haptique sur le trackpad",
+  "Haptic strength": "Intensité",
+  "Light": "Léger",
+  "Medium": "Moyen",
+  "Strong": "Fort",
   "General": "Général",
   "Enabled": "Activé",
   "Open at login": "Ouvrir au démarrage",
@@ -86,6 +90,8 @@ function fill() {
   for (const id of ["enabled", "reveal_after", "notify", "haptics"]) $(id).checked = settings[id];
   $("custom_dir").textContent = settings.custom_dir || t("No folder chosen");
   $("language").value = settings.language;
+  $("haptic_strength").value = settings.haptic_strength;
+  $("strength-row").hidden = !settings.haptics;
   $("custom-row").hidden = settings.output !== "custom";
   const keys = [settings.convert_key, settings.tools_key, settings.actions_key];
   $("key-warning").hidden = new Set(keys).size === keys.length;
@@ -184,6 +190,8 @@ bind("enabled", (el) => el.checked);
 bind("reveal_after", (el) => el.checked);
 bind("notify", (el) => el.checked);
 bind("haptics", (el) => el.checked);
+bind("haptic_strength", (el) => el.value);
+$("haptic_strength").addEventListener("change", (e) => invoke("test_haptic", { strength: e.target.value }));
 $("language").addEventListener("change", async (e) => {
   settings.language = e.target.value;
   await save();

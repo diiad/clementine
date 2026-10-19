@@ -15,6 +15,15 @@ pub enum OutputLocation {
     Custom,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum HapticStrength {
+    Light,
+    #[default]
+    Medium,
+    Strong,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -33,6 +42,7 @@ pub struct Settings {
     pub language: Language,
     /// Tick the trackpad when the pointer moves onto another slice.
     pub haptics: bool,
+    pub haptic_strength: HapticStrength,
 }
 
 impl Default for Settings {
@@ -51,6 +61,7 @@ impl Default for Settings {
             shortcut: "Alt+Super+KeyT".into(),
             language: Language::System,
             haptics: true,
+            haptic_strength: HapticStrength::Medium,
         }
     }
 }

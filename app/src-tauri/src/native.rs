@@ -141,22 +141,114 @@ pub fn accept_any_drag_operation() {
 #[cfg(not(target_os = "macos"))]
 pub fn accept_any_drag_operation() {}
 
-/// A light trackpad tick, as when snapping to a guide. macOS only plays it
-/// while a finger is on a Force Touch trackpad, which is the case mid-drag.
+/// A tick of the trackpad. `Light` uses the public AppKit API, which macOS
+/// only plays while a finger is on a Force Touch trackpad (the case mid-drag)
+/// and whose strength can't be changed. `Medium` and `Strong` drive the
+/// trackpad actuator through the private MultitouchSupport framework, like
+/// HapticKey does, and fall back to AppKit when it isn't available.
 #[cfg(target_os = "macos")]
-pub fn haptic() {
+pub fn haptic(strength: crate::settings::HapticStrength) {
+    use crate::settings::HapticStrength;
+    let actuation = match strength {
+        HapticStrength::Light => None,
+        HapticStrength::Medium => Some(4),
+        HapticStrength::Strong => Some(6),
+    };
+    if let Some(id) = actuation {
+        if actuator::actuate(id) {
+            return;
+        }
+    }
     use objc2_app_kit::{
         NSHapticFeedbackManager, NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime,
         NSHapticFeedbackPerformer,
     };
-    NSHapticFeedbackManager::defaultPerformer().performFeedbackPattern_performanceTime(
-        NSHapticFeedbackPattern::Alignment,
-        NSHapticFeedbackPerformanceTime::Now,
-    );
+    let pattern = match strength {
+        HapticStrength::Light => NSHapticFeedbackPattern::Alignment,
+        _ => NSHapticFeedbackPattern::Generic,
+    };
+    NSHapticFeedbackManager::defaultPerformer()
+        .performFeedbackPattern_performanceTime(pattern, NSHapticFeedbackPerformanceTime::Now);
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn haptic() {}
+pub fn haptic(_: crate::settings::HapticStrength) {}
+
+/// The built-in trackpad's actuator, opened once through dlopen so a
+/// missing or changed private framework just disables this path.
+#[cfg(target_os = "macos")]
+mod actuator {
+    use std::ffi::{c_void, CStr};
+    use std::sync::OnceLock;
+
+    type CreateList = unsafe extern "C" fn() -> *const c_void;
+    type GetDeviceId = unsafe extern "C" fn(*const c_void, *mut u64) -> i32;
+    type CreateActuator = unsafe extern "C" fn(u64) -> *const c_void;
+    type Open = unsafe extern "C" fn(*const c_void) -> i32;
+    type Actuate = unsafe extern "C" fn(*const c_void, i32, u32, f32, f32) -> i32;
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFArrayGetCount(array: *const c_void) -> isize;
+        fn CFArrayGetValueAtIndex(array: *const c_void, index: isize) -> *const c_void;
+    }
+
+    struct Actuator {
+        handle: *const c_void,
+        actuate: Actuate,
+    }
+    // The actuator is only a CF reference used for fire-and-forget calls.
+    unsafe impl Send for Actuator {}
+    unsafe impl Sync for Actuator {}
+
+    static ACTUATOR: OnceLock<Option<Actuator>> = OnceLock::new();
+
+    unsafe fn sym<T>(lib: *mut c_void, name: &CStr) -> Option<T> {
+        let p = libc::dlsym(lib, name.as_ptr());
+        (!p.is_null()).then(|| std::mem::transmute_copy(&p))
+    }
+
+    fn open() -> Option<Actuator> {
+        unsafe {
+            let lib = libc::dlopen(
+                c"/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport"
+                    .as_ptr(),
+                libc::RTLD_LAZY,
+            );
+            if lib.is_null() {
+                return None;
+            }
+            let list: CreateList = sym(lib, c"MTDeviceCreateList")?;
+            let device_id: GetDeviceId = sym(lib, c"MTDeviceGetDeviceID")?;
+            let create: CreateActuator = sym(lib, c"MTActuatorCreateFromDeviceID")?;
+            let open: Open = sym(lib, c"MTActuatorOpen")?;
+            let actuate: Actuate = sym(lib, c"MTActuatorActuate")?;
+            let devices = list();
+            if devices.is_null() {
+                return None;
+            }
+            for i in 0..CFArrayGetCount(devices) {
+                let mut id = 0u64;
+                if device_id(CFArrayGetValueAtIndex(devices, i), &mut id) != 0 {
+                    continue;
+                }
+                let handle = create(id);
+                if !handle.is_null() && open(handle) == 0 {
+                    return Some(Actuator { handle, actuate });
+                }
+            }
+            None
+        }
+    }
+
+    /// Play actuation `id` (1 = faint … 6 = strong). False if unavailable.
+    pub fn actuate(id: i32) -> bool {
+        match ACTUATOR.get_or_init(open) {
+            Some(a) => unsafe { (a.actuate)(a.handle, id, 0, 0.0, 2.0) == 0 },
+            None => false,
+        }
+    }
+}
 
 /// Open the AirDrop sheet for `paths`. Must run on the main thread.
 #[cfg(target_os = "macos")]

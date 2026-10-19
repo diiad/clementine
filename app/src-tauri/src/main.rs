@@ -74,11 +74,16 @@ fn state(app: &AppHandle) -> tauri::State<'_, AppState> {
 static HOVER: AtomicI64 = AtomicI64::new(-1);
 
 fn hover_changed(app: &AppHandle, index: i64) {
-    if HOVER.swap(index, Ordering::Relaxed) != index
-        && index >= 0
-        && state(app).settings.lock().unwrap().haptics
-    {
-        native::haptic();
+    if HOVER.swap(index, Ordering::Relaxed) == index || index < 0 {
+        return;
+    }
+    let (on, strength) = {
+        let st = state(app);
+        let s = st.settings.lock().unwrap();
+        (s.haptics, s.haptic_strength)
+    };
+    if on {
+        native::haptic(strength);
     }
 }
 
@@ -537,6 +542,12 @@ fn wheel_category(app: AppHandle, category: Category) {
     }
 }
 
+/// Settings: let the user feel a strength right away.
+#[tauri::command]
+fn test_haptic(strength: settings::HapticStrength) {
+    native::haptic(strength);
+}
+
 /// Click mode: the page moved the highlight with the mouse or keyboard.
 #[tauri::command]
 fn wheel_hover(app: AppHandle, index: i64) {
@@ -799,6 +810,7 @@ fn main() {
             wheel_category,
             wheel_close,
             wheel_hover,
+            test_haptic,
             get_settings,
             save_settings,
             ui_language,
