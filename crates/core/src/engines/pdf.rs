@@ -336,6 +336,30 @@ pub fn to_images(
     })
 }
 
+/// Scanned PDF → `.txt`: render each page and run Vision's OCR on it.
+pub fn ocr(input: &Path, opts: &Options, progress: Progress) -> Result<PathBuf> {
+    macos_only!({
+        let doc = mac::open(input)?;
+        let n = mac::page_count(&doc);
+        let tmp = super::scratch()?;
+        let png = tmp.path().join("page.png");
+        let mut pages = Vec::with_capacity(n);
+        for i in 0..n {
+            // 200 dpi is plenty for OCR and keeps big scans fast.
+            let page = mac::render(&*mac::page(&doc, i)?, opts.dpi.min(200))?;
+            super::image::encode(&image::DynamicImage::ImageRgba8(page), "png", &png, 100)?;
+            pages.push(super::vision::recognize_text(&png)?);
+            progress((i + 1) as f32 / n as f32);
+        }
+        if pages.iter().all(|p| p.trim().is_empty()) {
+            return Err(anyhow::anyhow!("no text found").into());
+        }
+        let out = output_path(input, "", "txt", opts);
+        std::fs::write(&out, pages.join("\n\n") + "\n")?;
+        Ok(out)
+    })
+}
+
 pub fn text(input: &Path) -> Result<String> {
     macos_only!({ Ok(mac::text(&*mac::open(input)?)) })
 }

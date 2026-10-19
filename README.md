@@ -12,7 +12,7 @@ Clémentine lives in the menu bar. Start dragging any file, from Finder or any o
 | Hold | Wheel | Examples |
 |---|---|---|
 | **⇧ Shift** | **Convert** | HEIC → JPG, MOV → MP4, PDF → DOCX, XLSX → CSV, SRT → VTT, RAR → ZIP |
-| **⌘ Command** | **Tools** | Compress, resize, rotate, strip metadata, merge PDFs, split pages, extract audio, make a thumbnail |
+| **⌘ Command** | **Tools** | Compress, resize, rotate, strip metadata, remove background, extract text (OCR), merge PDFs, split pages, extract audio, make a thumbnail |
 | **⌃ Control** | **Actions** | AirDrop, Float, Copy, Move…, Copy path, open in Terminal |
 
 Drop the file on a slice and the result appears next to the original. You can let go of the key once the wheel is open; dropping in the centre cancels.
@@ -26,6 +26,7 @@ Nothing is uploaded. Conversions run on your Mac, using Rust crates, macOS's own
 - **Drag, hold, drop**: no Accessibility permission needed (see [How it works](#how-it-works)).
 - **Keyboard and click mode**: press <kbd>⌥⌘T</kbd> to open the wheel for the Finder selection. Use arrow keys and <kbd>Enter</kbd>, <kbd>Tab</kbd> or <kbd>1</kbd>–<kbd>3</kbd> to switch wheels, and <kbd>Esc</kbd> to close.
 - **Multiple files**: the wheel shows only the conversions that apply to every selected file, plus merge tools when they make sense.
+- **On-device AI** through Apple's Vision framework: *Remove BG* cuts the subject out of a photo into a transparent PNG (macOS 14+), and *Extract text* / *OCR text* reads the text of images and scanned PDFs. Nothing is uploaded.
 - **Float shelf**: park files in a small always-on-top window and drag them out later.
 - **Settings**: choose the trigger keys, where results go (next to the original, Downloads or a folder you pick), quality, PDF/SVG resolution and launch at login.
 - **CLI**: the same engine runs from the command line as `clementine`.
@@ -68,6 +69,10 @@ cd app/src-tauri && cargo tauri dev
 
 # or bundle Clémentine.app + .dmg into target/release/bundle/
 cargo tauri build
+
+# no GUI session (SSH, locked screen)? The styled DMG needs Finder;
+# this makes a plain one with hdiutil instead
+../../scripts/make-dmg.sh
 ```
 
 ## Command line
@@ -92,6 +97,7 @@ app (Tauri 2)                                clementine-core
 ├─ main.rs     tray, windows, job runner ──▶ ├─ pdf       PDFKit, CoreGraphics, CoreText
 └─ ui/         wheel (SVG), settings, float  ├─ document  textutil, LibreOffice
                                              ├─ sheet     calamine, rust_xlsxwriter
+                                             ├─ vision    Vision (OCR, subject mask)
                                              └─ archive   bsdtar (libarchive)
 ```
 

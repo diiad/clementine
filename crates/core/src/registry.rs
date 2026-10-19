@@ -1,6 +1,6 @@
 //! Which operations exist for a selection, and dispatching them to engines.
 
-use crate::engines::{archive, document, image, media, pdf, sheet, subtitle};
+use crate::engines::{archive, document, image, media, pdf, sheet, subtitle, vision};
 use crate::kind::{detect, ext, Kind};
 use crate::{Error, Options, Progress, Result};
 use serde::Serialize;
@@ -95,7 +95,11 @@ fn tool_list(kinds: &[Kind], count: usize) -> Vec<(&'static str, &'static str)> 
             ("flip-h", "Flip"),
             ("grayscale", "Grayscale"),
             ("strip-metadata", "Strip metadata"),
+            ("ocr", "Extract text"),
         ]);
+        if vision::can_cut_out() {
+            tools.push(("remove-bg", "Remove BG"));
+        }
         if count > 1 {
             tools.push(("merge-pdf", "Combine PDF"));
         }
@@ -129,6 +133,7 @@ fn tool_list(kinds: &[Kind], count: usize) -> Vec<(&'static str, &'static str)> 
             ("rotate-cw", "Rotate ↻"),
             ("split", "Split pages"),
             ("first-page", "First page"),
+            ("ocr", "OCR text"),
         ]);
         if count > 1 {
             tools.push(("merge", "Merge"));
@@ -280,7 +285,12 @@ fn run_tool(
     for (i, input) in inputs.iter().enumerate() {
         let sub = |f: f32| progress((i as f32 + f) / n);
         let produced = match detect(input) {
+            Kind::Image if name == "ocr" => vision::image_text(input, opts).map(|p| vec![p]),
+            Kind::Image if name == "remove-bg" => {
+                vision::remove_background(input, opts).map(|p| vec![p])
+            }
             Kind::Image => image::tool(input, name, opts).map(|p| vec![p]),
+            Kind::Pdf if name == "ocr" => pdf::ocr(input, opts, &sub).map(|p| vec![p]),
             Kind::Audio | Kind::Video => media::tool(input, name, opts, &sub).map(|p| vec![p]),
             Kind::Pdf => pdf::tool(input, name, opts),
             Kind::Subtitle => subtitle::tool(input, name, opts).map(|p| vec![p]),

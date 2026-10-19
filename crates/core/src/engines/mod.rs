@@ -8,6 +8,7 @@ pub mod media;
 pub mod pdf;
 pub mod sheet;
 pub mod subtitle;
+pub mod vision;
 
 use crate::{Error, Result};
 use std::ffi::OsStr;
