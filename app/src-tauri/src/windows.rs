@@ -65,6 +65,8 @@ pub type DragListener = std::rc::Rc<dyn Fn(Drag) -> bool>;
 /// Our own OLE drop target for the wheel, in place of wry's. wry leaves the
 /// drop effect at whatever the source allowed, which Explorer can read as
 /// "moved" and then delete the originals; this one always answers "copy".
+/// It also hands the drag to the shell's drop helper, which keeps drawing
+/// the dragged files' ghost image over the wheel.
 mod drop_target {
     use super::{Drag, DragListener};
     use std::cell::{Cell, RefCell};
@@ -72,14 +74,17 @@ mod drop_target {
     use std::os::windows::ffi::OsStringExt;
     use std::path::PathBuf;
     use win::core::{implement, Ref, BOOL};
-    use win::Win32::Foundation::{HWND, LPARAM, POINTL};
-    use win::Win32::System::Com::{IDataObject, DVASPECT_CONTENT, FORMATETC, TYMED_HGLOBAL};
+    use win::Win32::Foundation::{HWND, LPARAM, POINT, POINTL};
+    use win::Win32::System::Com::{
+        CoCreateInstance, IDataObject, CLSCTX_INPROC_SERVER, DVASPECT_CONTENT, FORMATETC,
+        TYMED_HGLOBAL,
+    };
     use win::Win32::System::Ole::{
         IDropTarget, IDropTarget_Impl, RegisterDragDrop, ReleaseStgMedium, RevokeDragDrop,
         CF_HDROP, DROPEFFECT, DROPEFFECT_COPY, DROPEFFECT_NONE,
     };
     use win::Win32::System::SystemServices::MODIFIERKEYS_FLAGS;
-    use win::Win32::UI::Shell::{DragQueryFileW, HDROP};
+    use win::Win32::UI::Shell::{CLSID_DragDropHelper, DragQueryFileW, IDropTargetHelper, HDROP};
     use win::Win32::UI::WindowsAndMessaging::EnumChildWindows;
 
     thread_local! {
@@ -87,8 +92,8 @@ mod drop_target {
     }
 
     /// The file paths in a drag, or None when it carries no files.
-    fn files(data: Ref<'_, IDataObject>) -> Option<Vec<PathBuf>> {
-        let data = data.as_ref()?;
+    fn files(data: Option<&IDataObject>) -> Option<Vec<PathBuf>> {
+        let data = data?;
         let format = FORMATETC {
             cfFormat: CF_HDROP.0,
             ptd: std::ptr::null_mut(),
@@ -114,8 +119,15 @@ mod drop_target {
     #[implement(IDropTarget)]
     struct Target {
         listener: DragListener,
+        /// The wheel's top-level window, for the drop helper.
+        window: HWND,
+        helper: Option<IDropTargetHelper>,
         /// The drag in progress carries files.
         valid: Cell<bool>,
+    }
+
+    fn point(pt: &POINTL) -> POINT {
+        POINT { x: pt.x, y: pt.y }
     }
 
     impl Target {
@@ -137,12 +149,16 @@ mod drop_target {
             pt: &POINTL,
             effect: *mut DROPEFFECT,
         ) -> win::core::Result<()> {
+            let data = data.as_ref();
             let paths = files(data);
             self.valid.set(paths.is_some());
             if let Some(paths) = paths {
                 (self.listener)(Drag::Enter(paths, (pt.x, pt.y)));
             }
             unsafe { *effect = self.effect() };
+            if let (Some(helper), Some(data)) = (&self.helper, data) {
+                let _ = unsafe { helper.DragEnter(self.window, data, &point(pt), *effect) };
+            }
             Ok(())
         }
 
@@ -156,10 +172,16 @@ mod drop_target {
                 (self.listener)(Drag::Over((pt.x, pt.y)));
             }
             unsafe { *effect = self.effect() };
+            if let Some(helper) = &self.helper {
+                let _ = unsafe { helper.DragOver(&point(pt), *effect) };
+            }
             Ok(())
         }
 
         fn DragLeave(&self) -> win::core::Result<()> {
+            if let Some(helper) = &self.helper {
+                let _ = unsafe { helper.DragLeave() };
+            }
             if self.valid.replace(false) {
                 (self.listener)(Drag::Leave);
             }
@@ -173,6 +195,10 @@ mod drop_target {
             pt: &POINTL,
             effect: *mut DROPEFFECT,
         ) -> win::core::Result<()> {
+            let data = data.as_ref();
+            if let (Some(helper), Some(data)) = (&self.helper, data) {
+                let _ = unsafe { helper.Drop(data, &point(pt), self.effect()) };
+            }
             let taken = self.valid.replace(false)
                 && (self.listener)(Drag::Drop(files(data).unwrap_or_default(), (pt.x, pt.y)));
             unsafe {
@@ -202,11 +228,15 @@ mod drop_target {
                 LPARAM(&mut hwnds as *mut _ as isize),
             );
         }
+        let helper: Option<IDropTargetHelper> =
+            unsafe { CoCreateInstance(&CLSID_DragDropHelper, None, CLSCTX_INPROC_SERVER) }.ok();
         let targets = hwnds
             .into_iter()
             .filter_map(|h| {
                 let target: IDropTarget = Target {
                     listener: listener.clone(),
+                    window: root,
+                    helper: helper.clone(),
                     valid: Cell::new(false),
                 }
                 .into();
