@@ -1,6 +1,6 @@
 //! PDF handling through PDFKit and CoreGraphics (macOS only).
 // The macOS engine is all there is; elsewhere only the stubs remain.
-#![cfg_attr(not(target_os = "macos"), allow(unused))]
+#![cfg_attr(any(not(target_os = "macos"), feature = "pdfium"), allow(unused))]
 
 use crate::kind::{ext, kind_of_ext, Kind};
 use crate::{output_path, Error, Options, Progress, Result};
@@ -293,6 +293,13 @@ mod mac {
     }
 }
 
+// Windows: same functions, backed by PDFium.
+#[cfg(any(windows, feature = "pdfium"))]
+#[path = "pdfium.rs"]
+mod pdfium;
+#[cfg(any(windows, feature = "pdfium"))]
+pub use pdfium::*;
+
 macro_rules! macos_only {
     ($body:block) => {{
         #[cfg(target_os = "macos")]
@@ -306,16 +313,19 @@ macro_rules! macos_only {
     }};
 }
 
-/// PDF reading and writing need PDFKit (macOS).
+/// PDF reading and writing need PDFKit (macOS) or PDFium (Windows).
+#[cfg(not(any(windows, feature = "pdfium")))]
 pub fn available() -> bool {
     cfg!(target_os = "macos")
 }
 
+#[cfg(not(any(windows, feature = "pdfium")))]
 pub fn page_count(input: &Path) -> Result<usize> {
     macos_only!({ Ok(mac::page_count(&*mac::open(input)?)) })
 }
 
 /// One image per page: `doc.png` for single pages, `doc-1.png`, `doc-2.png`… otherwise.
+#[cfg(not(any(windows, feature = "pdfium")))]
 pub fn to_images(
     input: &Path,
     target: &str,
@@ -344,6 +354,7 @@ pub fn to_images(
 }
 
 /// Scanned PDF → `.txt`: render each page and run Vision's OCR on it.
+#[cfg(not(any(windows, feature = "pdfium")))]
 pub fn ocr(input: &Path, opts: &Options, progress: Progress) -> Result<PathBuf> {
     macos_only!({
         let doc = mac::open(input)?;
@@ -367,19 +378,23 @@ pub fn ocr(input: &Path, opts: &Options, progress: Progress) -> Result<PathBuf> 
     })
 }
 
+#[cfg(not(any(windows, feature = "pdfium")))]
 pub fn text(input: &Path) -> Result<String> {
     macos_only!({ Ok(mac::text(&*mac::open(input)?)) })
 }
 
+#[cfg(not(any(windows, feature = "pdfium")))]
 pub fn rtf(input: &Path) -> Result<Vec<u8>> {
     macos_only!({ mac::rtf(&*mac::open(input)?) })
 }
 
 /// Lay out an RTF document onto A4 pages.
+#[cfg(not(any(windows, feature = "pdfium")))]
 pub fn from_rtf(rtf: &[u8], out: &Path) -> Result<()> {
     macos_only!({ mac::typeset_rtf(rtf, out) })
 }
 
+#[cfg(not(any(windows, feature = "pdfium")))]
 pub fn merge(inputs: &[PathBuf], opts: &Options) -> Result<PathBuf> {
     macos_only!({
         let merged = mac::new_doc();
@@ -396,6 +411,7 @@ pub fn merge(inputs: &[PathBuf], opts: &Options) -> Result<PathBuf> {
 }
 
 /// Combine images (any format ImageIO reads, plus SVG) into one PDF, one page each.
+#[cfg(not(any(windows, feature = "pdfium")))]
 pub fn images_to_pdf(inputs: &[PathBuf], opts: &Options) -> Result<PathBuf> {
     macos_only!({
         let tmp = super::scratch()?;
@@ -419,6 +435,7 @@ pub fn images_to_pdf(inputs: &[PathBuf], opts: &Options) -> Result<PathBuf> {
     })
 }
 
+#[cfg(not(any(windows, feature = "pdfium")))]
 pub fn tool(input: &Path, name: &str, opts: &Options) -> Result<Vec<PathBuf>> {
     macos_only!({
         let doc = mac::open(input)?;
@@ -518,6 +535,9 @@ mod tests {
         .unwrap();
         let r = image::open(&img[0]).unwrap();
         assert!(r.height() > r.width(), "rotated page should be portrait");
-        assert!(tool(&pdf, "compress", &opts).unwrap()[0].exists());
+        // PDFium (the Windows engine) can't recompress images.
+        if cfg!(not(feature = "pdfium")) {
+            assert!(tool(&pdf, "compress", &opts).unwrap()[0].exists());
+        }
     }
 }

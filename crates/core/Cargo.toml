@@ -5,7 +5,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Use PDFium instead of PDFKit on macOS too: lets the Windows PDF engine be
+# tested on a Mac (`CLEMENTINE_PDFIUM=/path/libpdfium.dylib`).
+pdfium = ["dep:pdfium-render"]
+
 [dependencies]
+pdfium-render = { version = "0.9", default-features = false, features = ["pdfium_latest", "image_025", "thread_safe"], optional = true }
 anyhow.workspace = true
 thiserror.workspace = true
 serde.workspace = true
@@ -32,3 +38,7 @@ objc2-core-graphics = { version = "0.3", features = ["CGPDFDocument", "CGPDFPage
 objc2-vision = { version = "0.3", features = ["VNRequestHandler", "VNRequest", "VNRecognizeTextRequest", "VNObservation", "VNGenerateForegroundInstanceMaskRequest", "VNTypes", "objc2-core-video"] }
 objc2-core-video = { version = "0.3", features = ["CVPixelBuffer", "CVBuffer", "CVImageBuffer", "CVReturn", "CVBase"] }
 objc2-core-foundation = { version = "0.3", features = ["CFURL", "CFString", "CFCGTypes"] }
+
+# PDF on Windows: PDFium (pdfium.dll ships next to the app).
+[target.'cfg(windows)'.dependencies]
+pdfium-render = { version = "0.9", default-features = false, features = ["pdfium_latest", "image_025", "thread_safe"] }

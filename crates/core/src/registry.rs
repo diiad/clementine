@@ -38,7 +38,8 @@ fn convert_targets(path: &Path) -> Vec<&'static str> {
     let e = ext(path);
     let mac = cfg!(target_os = "macos");
     // HEIC/ICNS go through `sips`, PDF output through PDFKit: macOS only.
-    let mac_only = |t: &&str| mac || !matches!(*t, "heic" | "icns" | "pdf");
+    let mac_only =
+        |t: &&str| mac || !matches!(*t, "heic" | "icns") && (*t != "pdf" || pdf::available());
     let targets: Vec<&'static str> = match detect(path) {
         Kind::Image if image::can_decode(&e) => [
             "jpg", "png", "webp", "heic", "avif", "tiff", "gif", "bmp", "ico", "icns", "pdf",
@@ -56,9 +57,16 @@ fn convert_targets(path: &Path) -> Vec<&'static str> {
         Kind::Video => vec![
             "mp4", "mov", "m4v", "mkv", "webm", "avi", "wmv", "gif", "mp3", "m4a", "wav", "flac",
         ],
-        Kind::Pdf if pdf::available() => vec![
-            "png", "jpg", "tiff", "docx", "odt", "rtf", "html", "txt", "md", "epub",
-        ],
+        Kind::Pdf if pdf::available() => {
+            // Windows turns the PDF's text into documents with LibreOffice.
+            let rich = mac || document::office_available();
+            [
+                "png", "jpg", "tiff", "docx", "odt", "rtf", "html", "txt", "md", "epub",
+            ]
+            .into_iter()
+            .filter(|t| rich || matches!(*t, "png" | "jpg" | "tiff" | "txt"))
+            .collect()
+        }
         Kind::Document if document::can_read(&e) => document::targets(&e),
         Kind::Slides if document::office_available() => vec!["pdf", "pptx", "odp"],
         Kind::Spreadsheet if sheet::can_read(&e) => {
@@ -143,13 +151,18 @@ fn tool_list(kinds: &[Kind], count: usize) -> Vec<(&'static str, &'static str)> 
             tools.push(("merge", "Merge"));
         }
     } else if all(Kind::Pdf) && pdf::available() {
+        // Recompressing images needs PDFKit.
+        if cfg!(target_os = "macos") {
+            tools.push(("compress", "Compress"));
+        }
         tools.extend([
-            ("compress", "Compress"),
             ("rotate-cw", "Rotate ↻"),
             ("split", "Split pages"),
             ("first-page", "First page"),
-            ("ocr", "OCR text"),
         ]);
+        if vision::available() {
+            tools.push(("ocr", "OCR text"));
+        }
         if count > 1 {
             tools.push(("merge", "Merge"));
         }

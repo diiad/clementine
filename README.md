@@ -73,7 +73,7 @@ Install the `.exe` setup from [Releases](../../releases), then `winget install G
 
 | Available | Not yet on Windows |
 |---|---|
-| Images (JPG, PNG, WebP, AVIF output, SVG…), audio, video, documents and slides via LibreOffice, spreadsheets, subtitles, archives; Float, Copy, Move, Copy path, Terminal | Drag-and-hold, PDF tools and PDF/HEIC/ICNS conversion, OCR and background removal, AirDrop, haptics |
+| Images (JPG, PNG, WebP, AVIF output, SVG…), audio, video, documents and slides via LibreOffice, spreadsheets, subtitles, archives; PDF → images/text/documents, merge, split, rotate, first page, images → PDF (PDFium); Float, Copy, Move, Copy path, Terminal | Drag-and-hold, PDF compression, HEIC/ICNS, OCR and background removal, AirDrop, haptics |
 
 ### Build from source
 
@@ -150,4 +150,4 @@ Good first issues:
 
 ## License
 
-MIT. See [LICENSE](LICENSE). ffmpeg and LibreOffice run as separate programs under their own licenses.
+MIT. See [LICENSE](LICENSE). ffmpeg and LibreOffice run as separate programs under their own licenses. The Windows build ships [PDFium](https://pdfium.googlesource.com/pdfium/) (BSD-3-Clause, prebuilt by [pdfium-binaries](https://github.com/bblanchon/pdfium-binaries)).

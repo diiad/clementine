@@ -24,6 +24,15 @@ jobs:
       - name: Install ffmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
+      - name: Download PDFium (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          curl.exe -sSL -o pdfium.tgz "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F7881/pdfium-win-x64.tgz"
+          New-Item -ItemType Directory -Force pdfium-dist, app/src-tauri/pdfium | Out-Null
+          tar -xzf pdfium.tgz -C pdfium-dist
+          Copy-Item pdfium-dist/bin/pdfium.dll app/src-tauri/pdfium/
+          "CLEMENTINE_PDFIUM=$PWD\app\src-tauri\pdfium\pdfium.dll" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
