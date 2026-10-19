@@ -44,6 +44,9 @@ const FR = {
   "Enabled": "Activé",
   "Open at login": "Ouvrir au démarrage",
   "Language": "Langue",
+  "Hide menu bar icon": "Masquer l’icône de la barre des menus",
+  "Open Clémentine again from Finder or Spotlight to get back here.":
+    "Rouvrez Clémentine depuis le Finder ou Spotlight pour revenir ici.",
   "System": "Système",
   "Engines": "Moteurs",
   "ffmpeg (audio & video)": "ffmpeg (audio et vidéo)",
@@ -87,7 +90,8 @@ function fill() {
   $("dpi").value = String(settings.dpi);
   $("quality").value = settings.quality;
   $("quality-val").textContent = settings.quality;
-  for (const id of ["enabled", "reveal_after", "notify", "haptics"]) $(id).checked = settings[id];
+  for (const id of ["enabled", "reveal_after", "notify", "haptics", "hide_menu_bar_icon"]) $(id).checked = settings[id];
+  $("hidden-hint").hidden = !settings.hide_menu_bar_icon;
   $("custom_dir").textContent = settings.custom_dir || t("No folder chosen");
   $("language").value = settings.language;
   $("haptic_strength").value = settings.haptic_strength;
@@ -190,6 +194,7 @@ bind("enabled", (el) => el.checked);
 bind("reveal_after", (el) => el.checked);
 bind("notify", (el) => el.checked);
 bind("haptics", (el) => el.checked);
+bind("hide_menu_bar_icon", (el) => el.checked);
 bind("haptic_strength", (el) => el.value);
 $("haptic_strength").addEventListener("change", (e) => invoke("test_haptic", { strength: e.target.value }));
 $("language").addEventListener("change", async (e) => {

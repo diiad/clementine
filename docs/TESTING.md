@@ -45,3 +45,4 @@ Launch with `cd app/src-tauri && cargo tauri dev`, or open
 - [ ] Click the shortcut button and press a new combination (e.g. ⌃⌥K): it is used right away. ⌫ clears it, Esc cancels, and a combination another app owns shows an error and keeps the old one.
 - [ ] Untick **Enabled**: dragging no longer opens the wheel. The tray checkbox follows.
 - [ ] **Open at login** survives a reboot.
+- [ ] **Hide menu bar icon** removes the icon at once and after a restart; opening Clémentine again from Finder or Spotlight shows Settings.

@@ -590,6 +590,7 @@ fn save_settings(app: AppHandle, settings: Settings) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let language_changed = st.settings.lock().unwrap().language != settings.language;
     *st.settings.lock().unwrap() = settings.clone();
+    apply_tray_visibility(&app);
     if language_changed {
         translate_tray(&app);
         if let Some(w) = app.get_webview_window("settings") {
@@ -710,6 +711,13 @@ struct TrayItems {
     toggle: CheckMenuItem<tauri::Wry>,
     settings: MenuItem<tauri::Wry>,
     quit: MenuItem<tauri::Wry>,
+}
+
+fn apply_tray_visibility(app: &AppHandle) {
+    let hidden = state(app).settings.lock().unwrap().hide_menu_bar_icon;
+    if let Some(tray) = app.tray_by_id("main") {
+        let _ = tray.set_visible(!hidden);
+    }
 }
 
 /// Relabel the tray menu after a language change.
@@ -839,6 +847,7 @@ fn main() {
 
             let handle = app.handle().clone();
             build_tray(&handle)?;
+            apply_tray_visibility(&handle);
             wheel_window(&handle)?;
             if let Err(e) = register_shortcut(&handle, &shortcut) {
                 eprintln!("could not register shortcut {shortcut}: {e}");
@@ -871,13 +880,15 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building Clémentine");
 
-    app.run(|_, event| {
+    app.run(|app, event| match event {
         // Closing the settings window must not quit a menu-bar app.
-        if let RunEvent::ExitRequested {
+        RunEvent::ExitRequested {
             api, code: None, ..
-        } = event
-        {
-            api.prevent_exit();
-        }
+        } => api.prevent_exit(),
+        // Launching the app again (Finder, Spotlight…) opens Settings: the
+        // way back when the menu-bar icon is hidden.
+        #[cfg(target_os = "macos")]
+        RunEvent::Reopen { .. } => open_settings(app),
+        _ => {}
     });
 }
