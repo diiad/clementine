@@ -737,7 +737,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "clementine-app"
-version = "0.2.0-beta.5"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clementine-core",
@@ -765,7 +765,7 @@ dependencies = [
 
 [[package]]
 name = "clementine-cli"
-version = "0.2.0-beta.5"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -775,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "clementine-core"
-version = "0.2.0-beta.5"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "calamine",

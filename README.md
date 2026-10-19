@@ -3,7 +3,7 @@
 <h1 align="center">Clémentine</h1>
 
 <p align="center"><b>Drag a file. Hold a key. Drop it on the wheel.</b><br>
-An open-source, offline file converter for macOS (and, in preview, Windows), written in Rust.</p>
+An open-source, offline file converter for macOS and Windows, written in Rust.</p>
 
 ---
 
@@ -70,20 +70,23 @@ The command-line tool alone: `brew install diiad/tap/clementine-cli`.
 2. Install ffmpeg for audio and video: `brew install ffmpeg`.
 3. Optional: install [LibreOffice](https://www.libreoffice.org/) (`brew install --cask libreoffice`) for slides, spreadsheet → PDF, and higher-fidelity documents: DOCX/ODT/PDF output is then laid out by LibreOffice Writer (real tables, lists, images) instead of textutil + CoreText.
 
-### Windows (preview)
+### Windows
 
-Windows 10 and 11 get a first version. Windows has no system-wide drag to watch, so the wheel opens differently:
+Windows 10 and 11. Three ways to open the wheel:
 
+- **Drag** files from the desktop or File Explorer and hold <kbd>Shift</kbd> (convert), <kbd>Alt</kbd> (tools) or <kbd>Ctrl</kbd> (actions), as on macOS. Dropping on the wheel never moves the original.
 - **Right-click** files in File Explorer → **Open with Clémentine** (under *Show more options* on Windows 11).
 - Or select files in File Explorer and press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd>, changeable in Settings.
 
-Then pick a slice with the mouse or the keyboard, as in click mode on macOS.
-
-Install the `.exe` setup from [Releases](../../releases), then `winget install Gyan.FFmpeg` for audio and video and `winget install TheDocumentFoundation.LibreOffice` for documents and slides.
+Install the `.exe` setup from [Releases](../../releases). ffmpeg (audio and video) and LibreOffice (documents and slides) install from **Settings → Engines → Install**, or with `winget install Gyan.FFmpeg` and `winget install TheDocumentFoundation.LibreOffice`. The setup isn't signed yet: on the SmartScreen warning, choose **More info → Run anyway**.
 
 | Available | Not yet on Windows |
 |---|---|
-| Images (JPG, PNG, WebP, AVIF output, SVG…), audio, video, documents and slides via LibreOffice, spreadsheets, subtitles, archives; PDF → images/text/documents, merge, split, rotate, first page, images → PDF (PDFium); Float, Copy, Move, Copy path, Terminal | Drag-and-hold, PDF compression, HEIC/ICNS, OCR and background removal, AirDrop, haptics |
+| Images (JPG, PNG, WebP, AVIF output, SVG…), audio, video, documents and slides via LibreOffice, spreadsheets, subtitles, archives; PDF → images/text/documents, merge, split, rotate, first page, images → PDF (PDFium); Float, Copy, Move, Copy path, Terminal | PDF compression, HEIC/ICNS, OCR and background removal, AirDrop, haptics |
+
+### Updates
+
+Both apps check for a new version at launch and every 6 hours, and ask before installing it (Settings → General). Updates are signed; the feed lives in the [`updater`](../../releases/tag/updater) release.
 
 ### Build from source
 
