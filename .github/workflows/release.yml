@@ -15,9 +15,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
-      - name: Build app and DMG
+      - name: Build app
         working-directory: app/src-tauri
-        run: cargo tauri build
+        run: cargo tauri build --bundles app
+      - name: Build DMG
+        run: scripts/make-dmg.sh
       - name: Build CLI
         run: cargo build --release -p clementine-cli
       - name: Collect artifacts
