@@ -38,12 +38,14 @@ fn convert_targets(path: &Path) -> Vec<&'static str> {
     let e = ext(path);
     let targets: Vec<&'static str> = match detect(path) {
         Kind::Image => vec![
-            "jpg", "png", "webp", "heic", "avif", "tiff", "gif", "bmp", "ico", "pdf",
+            "jpg", "png", "webp", "heic", "avif", "tiff", "gif", "bmp", "ico", "icns", "pdf",
         ],
         Kind::Svg => vec!["png", "jpg", "webp", "avif", "tiff", "pdf"],
-        Kind::Audio => vec!["mp3", "m4a", "wav", "flac", "ogg", "opus", "aiff", "wma"],
+        Kind::Audio => vec![
+            "mp3", "m4a", "aac", "wav", "flac", "ogg", "opus", "aiff", "wma",
+        ],
         Kind::Video => vec![
-            "mp4", "mov", "mkv", "webm", "avi", "wmv", "gif", "mp3", "m4a", "wav",
+            "mp4", "mov", "m4v", "mkv", "webm", "avi", "wmv", "gif", "mp3", "m4a", "wav", "flac",
         ],
         Kind::Pdf => vec![
             "png", "jpg", "tiff", "docx", "odt", "rtf", "html", "txt", "md", "epub",

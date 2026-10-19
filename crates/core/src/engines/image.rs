@@ -156,6 +156,38 @@ pub fn encode(img: &DynamicImage, target: &str, out: &Path, quality: u8) -> Resu
                 .save_with_format(out, ImageFormat::Ico)
                 .map_err(io)?;
         }
+        "icns" => {
+            // Icons are square, power-of-two sized: centre on a transparent canvas.
+            let side = img.width().max(img.height());
+            let size = [1024u32, 512, 256, 128, 64, 32, 16]
+                .into_iter()
+                .find(|s| *s <= side)
+                .unwrap_or(16);
+            let fitted = img.resize(size, size, FilterType::Lanczos3).to_rgba8();
+            let mut canvas = RgbaImage::new(size, size);
+            image::imageops::overlay(
+                &mut canvas,
+                &fitted,
+                ((size - fitted.width()) / 2).into(),
+                ((size - fitted.height()) / 2).into(),
+            );
+            let tmp = scratch()?;
+            let png = tmp.path().join("icon.png");
+            canvas
+                .save_with_format(&png, ImageFormat::Png)
+                .map_err(io)?;
+            exec(
+                "/usr/bin/sips",
+                [
+                    "-s".as_ref(),
+                    "format".as_ref(),
+                    "icns".as_ref(),
+                    png.as_os_str(),
+                    "--out".as_ref(),
+                    out.as_os_str(),
+                ],
+            )?;
+        }
         "gif" => {
             DynamicImage::ImageRgba8(img.to_rgba8())
                 .save_with_format(out, ImageFormat::Gif)

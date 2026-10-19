@@ -26,8 +26,9 @@ pub fn make_overlay(_: &tauri::WebviewWindow) {}
 /// wry always answers drags with `NSDragOperationCopy`. While ⌘ is held,
 /// Finder only offers `Move`, so the drop would be refused, and ⌘ is the
 /// default Tools key. Wrap wry's `draggingEntered:` / `draggingUpdated:` to
-/// pick an operation the source allows. Clémentine never deletes the source, so
-/// answering `Move` is harmless: for file drags the destination does the work.
+/// pick an operation the source allows. Harmless ones come first; `Move` is
+/// the last resort (Finder with ⌘ held offers nothing else) and Clémentine
+/// never deletes the source itself.
 #[cfg(target_os = "macos")]
 pub fn accept_any_drag_operation() {
     use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
@@ -46,8 +47,8 @@ pub fn accept_any_drag_operation() {
         if op & mask != 0 {
             return op;
         }
-        // Copy, Generic, Move, Link
-        [1usize, 4, 16, 2]
+        // Copy, Generic, Link, Move
+        [1usize, 4, 2, 16]
             .into_iter()
             .find(|c| mask & c != 0)
             .unwrap_or(0)

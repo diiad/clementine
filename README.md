@@ -36,9 +36,9 @@ Nothing is uploaded. Conversions run on your Mac, using Rust crates, macOS's own
 
 | Family | Reads | Writes |
 |---|---|---|
-| Images | JPG, PNG, WebP, HEIC/HEIF, AVIF, TIFF, BMP, GIF, ICO, TGA, SVG | JPG, PNG, WebP, HEIC, AVIF, TIFF, GIF, BMP, ICO, PDF |
-| Audio | MP3, M4A/AAC, WAV, FLAC, OGG, Opus, AIFF, WMA, CAF | MP3, M4A, WAV, FLAC, OGG, Opus, AIFF, WMA |
-| Video | MP4, MOV, M4V, MKV, WebM, AVI, WMV, FLV, MPEG, 3GP, TS | MP4, MOV, MKV, WebM, AVI, WMV, GIF, plus MP3/M4A/WAV soundtrack |
+| Images | JPG, PNG, WebP, HEIC/HEIF, AVIF, TIFF, BMP, GIF, ICO, TGA, SVG | JPG, PNG, WebP, HEIC, AVIF, TIFF, GIF, BMP, ICO, ICNS, PDF |
+| Audio | MP3, M4A/AAC, WAV, FLAC, OGG, Opus, AIFF, WMA, CAF | MP3, M4A, AAC, WAV, FLAC, OGG, Opus, AIFF, WMA |
+| Video | MP4, MOV, M4V, MKV, WebM, AVI, WMV, FLV, MPEG, 3GP, TS | MP4, MOV, M4V, MKV, WebM, AVI, WMV, GIF, plus MP3/M4A/WAV/FLAC soundtrack |
 | PDF | PDF | PNG/JPG/TIFF (one per page), DOCX, ODT, RTF, HTML, TXT, Markdown, EPUB |
 | Documents | DOCX, DOC, ODT, RTF, TXT, HTML, Markdown, EPUB, WebArchive (Pages with LibreOffice) | DOCX, ODT, RTF, PDF, HTML, TXT, Markdown, EPUB |
 | Slides | PPTX, PPT, ODP, Keynote (*requires LibreOffice*) | PDF, PPTX, ODP |
