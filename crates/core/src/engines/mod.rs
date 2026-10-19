@@ -15,18 +15,6 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn expands_env_vars() {
-        std::env::set_var("CLEMENTINE_TEST_DIR", "C:\\Tools");
-        assert_eq!(
-            super::expand_env("%CLEMENTINE_TEST_DIR%\\bin;%NOPE_UNSET%;50%"),
-            "C:\\Tools\\bin;%NOPE_UNSET%;50%"
-        );
-    }
-}
-
 /// A command for a console tool. On Windows it runs without flashing a
 /// console window over the desktop.
 pub fn command(program: impl AsRef<OsStr>) -> Command {
@@ -198,4 +186,16 @@ fn expand_env(s: &str) -> String {
 /// Scratch directory that is removed when dropped.
 pub(crate) fn scratch() -> Result<tempfile::TempDir> {
     Ok(tempfile::Builder::new().prefix("clementine-").tempdir()?)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn expands_env_vars() {
+        std::env::set_var("CLEMENTINE_TEST_DIR", "C:\\Tools");
+        assert_eq!(
+            super::expand_env("%CLEMENTINE_TEST_DIR%\\bin;%NOPE_UNSET%;50%"),
+            "C:\\Tools\\bin;%NOPE_UNSET%;50%"
+        );
+    }
 }
