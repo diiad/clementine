@@ -29,6 +29,7 @@ Nothing is uploaded. Conversions run on your Mac, using Rust crates, macOS's own
 - **On-device AI** through Apple's Vision framework: *Remove BG* cuts the subject out of a photo into a transparent PNG (macOS 14+), and *Extract text* / *OCR text* reads the text of images and scanned PDFs. Nothing is uploaded.
 - **Float shelf**: park files in a small always-on-top window and drag them out later.
 - **Settings**: choose the trigger keys, where results go (next to the original, Downloads or a folder you pick), quality, PDF/SVG resolution and launch at login.
+- **English or French**: the interface follows the macOS language, or pick one in Settings.
 - **CLI**: the same engine runs from the command line as `clementine`.
 
 ### Formats

@@ -11,10 +11,14 @@ const hub = document.getElementById("hub");
 const hubTitle = document.getElementById("hub-title");
 const hubSub = document.getElementById("hub-sub");
 const hubProgress = document.getElementById("hub-progress");
-const CATEGORY_NAMES = { convert: "Convert", tool: "Tools", action: "Actions" };
+const STRINGS = {
+  en: { convert: "Convert", tool: "Tools", action: "Actions", cancel: "Cancel", failed: "Failed", empty: "Nothing to do" },
+  fr: { convert: "Convertir", tool: "Outils", action: "Actions", cancel: "Annuler", failed: "Échec", empty: "Rien à faire" },
+};
+const t = (key) => (STRINGS[state.lang] || STRINGS.en)[key];
 const CATEGORIES = ["convert", "tool", "action"];
 
-let state = { segments: [], category: "convert", title: "", clickMode: false, hub: 56, busy: false };
+let state = { segments: [], category: "convert", title: "", clickMode: false, hub: 56, busy: false, lang: "en" };
 let active = -1;
 
 const rad = (deg) => (deg * Math.PI) / 180;
@@ -65,9 +69,9 @@ function render() {
 function idleHub() {
   hub.className.baseVal = "";
   hubProgress.style.strokeDasharray = "0 400";
-  hubTitle.textContent = CATEGORY_NAMES[state.category] || "";
+  hubTitle.textContent = t(state.category) || "";
   const name = state.title.length > 16 ? state.title.slice(0, 15) + "…" : state.title;
-  hubSub.textContent = state.segments.length ? name : "Nothing to do";
+  hubSub.textContent = state.segments.length ? name : t("empty");
 }
 
 function setActive(i) {
@@ -78,7 +82,7 @@ function setActive(i) {
   if (state.busy) return;
   if (i === -2) {
     hub.className.baseVal = "cancel";
-    hubTitle.textContent = "Cancel";
+    hubTitle.textContent = t("cancel");
     hubSub.textContent = "";
   } else if (hub.className.baseVal === "cancel") {
     idleHub();
@@ -119,6 +123,7 @@ listen("wheel:show", ({ payload }) => {
     clickMode: payload.click_mode,
     hub: payload.hub,
     busy: false,
+    lang: payload.lang,
   };
   render();
   requestAnimationFrame(() => svg.classList.add("shown"));
@@ -146,7 +151,7 @@ listen("wheel:status", ({ payload }) => {
     hubSub.textContent = payload.message.length > 16 ? payload.message.slice(0, 15) + "…" : payload.message;
   } else {
     hub.className.baseVal = "error";
-    hubTitle.textContent = "Failed";
+    hubTitle.textContent = t("failed");
     const m = payload.message.replace(/^.*?: /, "");
     hubSub.textContent = m.length > 18 ? m.slice(0, 17) + "…" : m;
   }

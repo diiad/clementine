@@ -1,5 +1,6 @@
 //! Persistent preferences, stored as JSON in the app config directory.
 
+use crate::i18n::Language;
 use crate::watcher::Modifier;
 use clementine_core::{Category, Options};
 use serde::{Deserialize, Serialize};
@@ -29,6 +30,7 @@ pub struct Settings {
     pub notify: bool,
     /// Global shortcut that opens the wheel for the Finder selection.
     pub shortcut: String,
+    pub language: Language,
 }
 
 impl Default for Settings {
@@ -45,6 +47,7 @@ impl Default for Settings {
             reveal_after: false,
             notify: true,
             shortcut: "Alt+Super+KeyT".into(),
+            language: Language::System,
         }
     }
 }

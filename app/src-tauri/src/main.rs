@@ -1,12 +1,14 @@
 //! Clémentine: a menu-bar app. Drag a file, hold a key, and a wheel of
 //! conversions, tools or actions opens under the cursor; drop on a slice.
 
+mod i18n;
 mod native;
 mod settings;
 mod watcher;
 mod wheel;
 
 use clementine_core::{operations, Category, Operation};
+use i18n::{tr, Lang};
 use serde::Serialize;
 use settings::Settings;
 use std::path::PathBuf;
@@ -50,6 +52,7 @@ struct ShowPayload {
     segments: Vec<Segment>,
     click_mode: bool,
     hub: f64,
+    lang: Lang,
 }
 
 #[derive(Clone, Serialize)]
@@ -64,13 +67,17 @@ fn state(app: &AppHandle) -> tauri::State<'_, AppState> {
     app.state::<AppState>()
 }
 
-fn title_for(paths: &[PathBuf]) -> String {
+fn lang(app: &AppHandle) -> Lang {
+    state(app).settings.lock().unwrap().language.resolve()
+}
+
+fn title_for(paths: &[PathBuf], lang: Lang) -> String {
     match paths {
         [one] => one
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default(),
-        many => format!("{} items", many.len()),
+        many => format!("{} {}", many.len(), tr(lang, "items")),
     }
 }
 
@@ -111,11 +118,16 @@ fn open_wheel(app: &AppHandle, paths: Vec<PathBuf>, category: Category, click_mo
     if s.busy {
         return;
     }
-    let ops = operations(&paths, category);
+    let lang = st.settings.lock().unwrap().language.resolve();
+    let mut ops = operations(&paths, category);
+    for op in &mut ops {
+        op.label = i18n::op_label(lang, &op.id, &op.label);
+    }
     let segments = wheel::layout(&ops);
     let payload = ShowPayload {
+        lang,
         category,
-        title: title_for(&paths),
+        title: title_for(&paths, lang),
         segments: segments.clone(),
         click_mode,
         hub: wheel::HUB,
@@ -225,6 +237,7 @@ fn notify(app: &AppHandle, title: &str, body: &str) {
 
 /// Run the operation in slice `index` on `paths`. Called on the main thread.
 fn start_job(app: &AppHandle, index: usize, paths: Vec<PathBuf>) {
+    let lang = lang(app);
     let (op, opts, reveal) = {
         let st = state(app);
         let mut s = st.session.lock().unwrap();
@@ -260,14 +273,14 @@ fn start_job(app: &AppHandle, index: usize, paths: Vec<PathBuf>) {
                 let Some(dir) = app
                     .dialog()
                     .file()
-                    .set_title("Move to…")
+                    .set_title(tr(lang, "Move to…"))
                     .blocking_pick_folder()
                 else {
                     return;
                 };
                 let Ok(dir) = dir.into_path() else { return };
                 if let Err(e) = native::move_into(&paths, &dir) {
-                    notify(&app, "Move failed", &e.to_string());
+                    notify(&app, tr(lang, "Move failed"), &e.to_string());
                 }
             });
             return;
@@ -305,12 +318,12 @@ fn start_job(app: &AppHandle, index: usize, paths: Vec<PathBuf>) {
         let linger = match &result {
             Ok(outputs) => {
                 let message = match outputs.as_slice() {
-                    [] => "Done".to_string(),
+                    [] => tr(lang, "Done").to_string(),
                     [one] => one
                         .file_name()
                         .map(|n| n.to_string_lossy().into_owned())
                         .unwrap_or_default(),
-                    many => format!("{} files", many.len()),
+                    many => format!("{} {}", many.len(), tr(lang, "files")),
                 };
                 emit_status(
                     &app,
@@ -319,7 +332,11 @@ fn start_job(app: &AppHandle, index: usize, paths: Vec<PathBuf>) {
                     },
                 );
                 if started.elapsed() > Duration::from_secs(5) {
-                    notify(&app, &format!("{} finished", op.label), &message);
+                    notify(
+                        &app,
+                        &format!("{} {}", op.label, tr(lang, "finished")),
+                        &message,
+                    );
                 }
                 if reveal && !outputs.is_empty() {
                     let _ = clementine_core::run("action:reveal", outputs, &opts, &|_| {});
@@ -337,7 +354,11 @@ fn start_job(app: &AppHandle, index: usize, paths: Vec<PathBuf>) {
                         message: e.to_string(),
                     },
                 );
-                notify(&app, &format!("{} failed", op.label), &e.to_string());
+                notify(
+                    &app,
+                    &format!("{} {}", op.label, tr(lang, "failed")),
+                    &e.to_string(),
+                );
                 3000
             }
         };
@@ -404,7 +425,11 @@ fn open_for_selection(app: &AppHandle) {
         let h = app.clone();
         let _ = app.run_on_main_thread(move || {
             if paths.is_empty() {
-                notify(&h, "Clémentine", "Select files in Finder first.");
+                notify(
+                    &h,
+                    "Clémentine",
+                    tr(lang(&h), "Select files in Finder first."),
+                );
             } else {
                 open_wheel(&h, paths, Category::Convert, true);
             }
@@ -458,7 +483,7 @@ fn open_settings(app: &AppHandle) {
     }
     if let Ok(w) =
         WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
-            .title("Clémentine Settings")
+            .title(tr(lang(app), "Clémentine Settings"))
             .inner_size(520.0, 860.0)
             .resizable(false)
             .center()
@@ -510,6 +535,11 @@ fn wheel_close(app: AppHandle) {
 }
 
 #[tauri::command]
+fn ui_language(app: AppHandle) -> Lang {
+    lang(&app)
+}
+
+#[tauri::command]
 fn get_settings(app: AppHandle) -> Settings {
     state(&app).settings.lock().unwrap().clone()
 }
@@ -522,15 +552,25 @@ fn save_settings(app: AppHandle, settings: Settings) -> Result<(), String> {
         // Another app may own the combination: keep the old one then.
         if let Err(e) = register_shortcut(&app, &settings.shortcut) {
             let _ = register_shortcut(&app, &previous);
-            return Err(format!("This shortcut can't be used: {e}"));
+            return Err(format!(
+                "{}: {e}",
+                tr(settings.language.resolve(), "This shortcut can't be used")
+            ));
         }
     }
     settings
         .save(&st.settings_path)
         .map_err(|e| e.to_string())?;
+    let language_changed = st.settings.lock().unwrap().language != settings.language;
     *st.settings.lock().unwrap() = settings.clone();
-    if let Some(item) = app.try_state::<CheckMenuItem<tauri::Wry>>() {
-        let _ = item.set_checked(settings.enabled);
+    if language_changed {
+        translate_tray(&app);
+        if let Some(w) = app.get_webview_window("settings") {
+            let _ = w.set_title(tr(settings.language.resolve(), "Clémentine Settings"));
+        }
+    }
+    if let Some(tray) = app.try_state::<TrayItems>() {
+        let _ = tray.toggle.set_checked(settings.enabled);
     }
     Ok(())
 }
@@ -637,14 +677,53 @@ fn float_open_wheel(app: AppHandle, index: usize) {
 
 // --- App -------------------------------------------------------------------------
 
+struct TrayItems {
+    open: MenuItem<tauri::Wry>,
+    float: MenuItem<tauri::Wry>,
+    toggle: CheckMenuItem<tauri::Wry>,
+    settings: MenuItem<tauri::Wry>,
+    quit: MenuItem<tauri::Wry>,
+}
+
+/// Relabel the tray menu after a language change.
+fn translate_tray(app: &AppHandle) {
+    let l = lang(app);
+    if let Some(t) = app.try_state::<TrayItems>() {
+        let _ = t.open.set_text(tr(l, "Open Wheel for Finder Selection"));
+        let _ = t.float.set_text(tr(l, "Show Float Shelf"));
+        let _ = t.toggle.set_text(tr(l, "Enabled"));
+        let _ = t.settings.set_text(tr(l, "Settings…"));
+        let _ = t.quit.set_text(tr(l, "Quit Clémentine"));
+    }
+}
+
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let enabled = state(app).settings.lock().unwrap().enabled;
-    let shortcut_label = "Open Wheel for Finder Selection";
-    let open = MenuItem::with_id(app, "open", shortcut_label, true, None::<&str>)?;
-    let toggle = CheckMenuItem::with_id(app, "toggle", "Enabled", true, enabled, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
-    let float = MenuItem::with_id(app, "float", "Show Float Shelf", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Clémentine", true, Some("CmdOrCtrl+Q"))?;
+    let l = lang(app);
+    let open = MenuItem::with_id(
+        app,
+        "open",
+        tr(l, "Open Wheel for Finder Selection"),
+        true,
+        None::<&str>,
+    )?;
+    let toggle =
+        CheckMenuItem::with_id(app, "toggle", tr(l, "Enabled"), true, enabled, None::<&str>)?;
+    let settings = MenuItem::with_id(
+        app,
+        "settings",
+        tr(l, "Settings…"),
+        true,
+        Some("CmdOrCtrl+,"),
+    )?;
+    let float = MenuItem::with_id(app, "float", tr(l, "Show Float Shelf"), true, None::<&str>)?;
+    let quit = MenuItem::with_id(
+        app,
+        "quit",
+        tr(l, "Quit Clémentine"),
+        true,
+        Some("CmdOrCtrl+Q"),
+    )?;
     let menu = Menu::with_items(
         app,
         &[
@@ -657,7 +736,13 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             &quit,
         ],
     )?;
-    app.manage(toggle.clone());
+    app.manage(TrayItems {
+        open: open.clone(),
+        float: float.clone(),
+        toggle: toggle.clone(),
+        settings: settings.clone(),
+        quit: quit.clone(),
+    });
     TrayIconBuilder::with_id("main")
         .icon(tauri::image::Image::from_bytes(include_bytes!(
             "../icons/tray.png"
@@ -699,6 +784,7 @@ fn main() {
             wheel_close,
             get_settings,
             save_settings,
+            ui_language,
             choose_folder,
             engine_status,
             set_autostart,
