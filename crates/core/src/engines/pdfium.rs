@@ -102,8 +102,36 @@ pub fn to_images(
     Ok(out)
 }
 
-pub fn ocr(input: &Path, _opts: &Options, _progress: Progress) -> Result<PathBuf> {
-    Err(unsupported("tool:ocr", input))
+/// Scanned PDF → `.txt`: each page rendered and read by the system OCR.
+pub fn ocr(input: &Path, opts: &Options, progress: Progress) -> Result<PathBuf> {
+    if !crate::engines::vision::available() {
+        return Err(unsupported("tool:ocr", input));
+    }
+    let doc = open(input)?;
+    let n = doc.pages().len() as usize;
+    let tmp = crate::engines::scratch()?;
+    let png = tmp.path().join("page.png");
+    let mut pages = Vec::with_capacity(n);
+    for (i, page) in doc.pages().iter().enumerate() {
+        // 200 dpi is plenty for OCR and keeps big scans fast.
+        let width = (page.width().value / 72.0 * opts.dpi.min(200) as f32)
+            .round()
+            .max(1.0) as i32;
+        let image = page
+            .render_with_config(&PdfRenderConfig::new().set_target_width(width))
+            .map_err(err)?
+            .as_image()
+            .map_err(err)?;
+        img::encode(&image, "png", &png, 100)?;
+        pages.push(crate::engines::vision::recognize_text(&png)?);
+        progress((i + 1) as f32 / n as f32);
+    }
+    if pages.iter().all(|p| p.trim().is_empty()) {
+        return Err(anyhow::anyhow!("no text found").into());
+    }
+    let out = output_path(input, "", "txt", opts);
+    std::fs::write(&out, pages.join("\n\n") + "\n")?;
+    Ok(out)
 }
 
 pub fn text(input: &Path) -> Result<String> {

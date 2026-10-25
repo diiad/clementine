@@ -8,6 +8,7 @@
 mod i18n;
 mod install;
 mod native;
+mod notice;
 mod settings;
 mod updater;
 mod watcher;
@@ -52,6 +53,8 @@ struct AppState {
     settings_path: PathBuf,
     session: Mutex<Session>,
     floating: Mutex<Vec<PathBuf>>,
+    /// The file open in the trim / crop editor.
+    editing: Mutex<Option<PathBuf>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -200,11 +203,30 @@ fn open_wheel(app: &AppHandle, paths: Vec<PathBuf>, category: Category, click_mo
     if s.busy {
         return;
     }
-    let lang = st.settings.lock().unwrap().language.resolve();
+    let settings = st.settings.lock().unwrap();
+    let lang = settings.language.resolve();
     let mut ops = operations(&paths, category);
+    if category == Category::Tool {
+        // Recipes come first: they are the user's own.
+        let recipes = settings
+            .recipes
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.applies(&paths))
+            .map(|(i, r)| Operation {
+                id: format!("recipe:{i}"),
+                label: r.name.clone(),
+                category,
+            });
+        ops.splice(0..0, recipes);
+    }
     for op in &mut ops {
         op.label = i18n::op_label(lang, &op.id, &op.label);
+        if op.id == "tool:fit-size" {
+            op.label = i18n::fit_size_label(lang, settings.target_mb);
+        }
     }
+    drop(settings);
     let segments = wheel::layout(&ops);
     let payload = ShowPayload {
         pending: paths.is_empty() && !click_mode,
@@ -411,10 +433,20 @@ fn notify(app: &AppHandle, title: &str, body: &str) {
     }
 }
 
+/// A job finished: offer to open what it produced.
+fn notify_finished(app: &AppHandle, title: String, body: String, outputs: &[PathBuf]) {
+    if outputs.is_empty() {
+        return notify(app, &title, &body);
+    }
+    if state(app).settings.lock().unwrap().notify {
+        notice::finished(app, title, body, outputs.to_vec(), lang(app));
+    }
+}
+
 /// Run the operation in slice `index` on `paths`. Called on the main thread.
 fn start_job(app: &AppHandle, index: usize, paths: Vec<PathBuf>) {
     let lang = lang(app);
-    let (op, opts, reveal) = {
+    let (op, opts, reveal, steps) = {
         let st = state(app);
         let mut s = st.session.lock().unwrap();
         let Some(op) = s.ops.get(index).cloned() else {
@@ -425,7 +457,12 @@ fn start_job(app: &AppHandle, index: usize, paths: Vec<PathBuf>) {
         }
         s.busy = true;
         let settings = st.settings.lock().unwrap();
-        (op, settings.options(), settings.reveal_after)
+        let steps = op
+            .id
+            .strip_prefix("recipe:")
+            .and_then(|i| settings.recipes.get(i.parse::<usize>().ok()?))
+            .map(|r| r.steps.clone());
+        (op, settings.options(), settings.reveal_after, steps)
     };
 
     // Actions that need the main thread or a UI.
@@ -440,6 +477,13 @@ fn start_job(app: &AppHandle, index: usize, paths: Vec<PathBuf>) {
         "action:float" => {
             hide_wheel(app);
             open_float(app, paths);
+            return;
+        }
+        "tool:trim" | "tool:crop" => {
+            hide_wheel(app);
+            if let Some(path) = paths.into_iter().next() {
+                open_editor(app, path);
+            }
             return;
         }
         "action:move" => {
@@ -489,7 +533,10 @@ fn start_job(app: &AppHandle, index: usize, paths: Vec<PathBuf>) {
                 );
             }
         };
-        let result = clementine_core::run(&op.id, &paths, &opts, &progress);
+        let result = match &steps {
+            Some(steps) => clementine_core::run_recipe(steps, &paths, &opts, &progress),
+            None => clementine_core::run(&op.id, &paths, &opts, &progress),
+        };
         let quick = op.id.starts_with("action:");
         let linger = match &result {
             Ok(outputs) => {
@@ -508,10 +555,11 @@ fn start_job(app: &AppHandle, index: usize, paths: Vec<PathBuf>) {
                     },
                 );
                 if started.elapsed() > Duration::from_secs(5) {
-                    notify(
+                    notify_finished(
                         &app,
-                        &format!("{} {}", op.label, tr(lang, "finished")),
-                        &message,
+                        format!("{} {}", op.label, tr(lang, "finished")),
+                        message,
+                        outputs,
                     );
                 }
                 if reveal && !outputs.is_empty() {
@@ -652,6 +700,124 @@ fn open_float(app: &AppHandle, paths: Vec<PathBuf>) {
     let _ = window.show();
 }
 
+// --- Trim / crop editor ----------------------------------------------------------
+
+fn open_editor(app: &AppHandle, path: PathBuf) {
+    // The page shows the file through the asset protocol: allow just this one.
+    if let Err(e) = app.asset_protocol_scope().allow_file(&path) {
+        eprintln!("could not allow {} for the editor: {e}", path.display());
+    }
+    *state(app).editing.lock().unwrap() = Some(path.clone());
+    let title = title_for(&[path], lang(app));
+    if let Some(w) = app.get_webview_window("editor") {
+        let _ = w.set_title(&title);
+        let _ = w.emit("editor:open", ());
+        let _ = w.show();
+        let _ = w.set_focus();
+        return;
+    }
+    let builder = WebviewWindowBuilder::new(app, "editor", WebviewUrl::App("editor.html".into()))
+        .title(&title)
+        .inner_size(760.0, 600.0)
+        .min_inner_size(480.0, 400.0)
+        .center()
+        .focused(true);
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true);
+    if let Ok(w) = builder.build() {
+        let _ = w.set_focus();
+    }
+}
+
+fn close_editor(app: &AppHandle) {
+    *state(app).editing.lock().unwrap() = None;
+    if let Some(w) = app.get_webview_window("editor") {
+        let _ = w.close();
+    }
+}
+
+#[derive(Serialize)]
+struct EditorFile {
+    path: String,
+    name: String,
+    kind: clementine_core::Kind,
+    /// Seconds, for audio and video (the page can't always play the file).
+    duration: Option<f64>,
+}
+
+#[tauri::command]
+fn editor_file(app: AppHandle) -> Option<EditorFile> {
+    let path = state(&app).editing.lock().unwrap().clone()?;
+    let kind = clementine_core::detect(&path);
+    let duration = matches!(
+        kind,
+        clementine_core::Kind::Audio | clementine_core::Kind::Video
+    )
+    .then(|| clementine_core::engines::media::duration(&path))
+    .flatten();
+    Some(EditorFile {
+        name: title_for(std::slice::from_ref(&path), lang(&app)),
+        path: path.display().to_string(),
+        kind,
+        duration,
+    })
+}
+
+#[tauri::command]
+fn editor_close(app: AppHandle) {
+    close_editor(&app);
+}
+
+/// Run the trim or crop the page settled on. Progress and failures go back
+/// to the page; on success the window closes.
+#[tauri::command]
+fn editor_apply(app: AppHandle, operation: String) -> Result<(), String> {
+    if !(operation.starts_with("tool:trim=") || operation.starts_with("tool:crop=")) {
+        return Err(format!("unexpected operation {operation}"));
+    }
+    let path = state(&app)
+        .editing
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or("no file open")?;
+    let (opts, reveal) = {
+        let st = state(&app);
+        let s = st.settings.lock().unwrap();
+        (s.options(), s.reveal_after)
+    };
+    std::thread::spawn(move || {
+        let started = Instant::now();
+        let progress = |p: f32| {
+            let _ = app.emit_to("editor", "editor:progress", p);
+        };
+        match clementine_core::run(&operation, &[path], &opts, &progress) {
+            Ok(outputs) => {
+                let h = app.clone();
+                let _ = app.run_on_main_thread(move || close_editor(&h));
+                if reveal && !outputs.is_empty() {
+                    let _ = clementine_core::run("action:reveal", &outputs, &opts, &|_| {});
+                }
+                if started.elapsed() > Duration::from_secs(5) {
+                    let l = lang(&app);
+                    let name = outputs
+                        .first()
+                        .and_then(|p| p.file_name())
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    notify_finished(&app, tr(l, "Done").to_string(), name, &outputs);
+                }
+            }
+            Err(e) => {
+                let _ = app.emit_to("editor", "editor:failed", e.to_string());
+            }
+        }
+    });
+    Ok(())
+}
+
 // --- Settings window -------------------------------------------------------------
 
 fn open_settings(app: &AppHandle) {
@@ -725,6 +891,34 @@ fn wheel_close(app: AppHandle) {
     }
 }
 
+#[derive(Serialize)]
+struct CatalogGroup {
+    family: &'static str,
+    ops: Vec<Operation>,
+}
+
+/// Settings: the operations recipes can be built from.
+#[tauri::command]
+fn operation_catalog(app: AppHandle) -> Vec<CatalogGroup> {
+    let (lang, target_mb) = {
+        let st = state(&app);
+        let s = st.settings.lock().unwrap();
+        (s.language.resolve(), s.target_mb)
+    };
+    clementine_core::catalog()
+        .into_iter()
+        .map(|(family, mut ops)| {
+            for op in &mut ops {
+                op.label = i18n::op_label(lang, &op.id, &op.label);
+                if op.id == "tool:fit-size" {
+                    op.label = i18n::fit_size_label(lang, target_mb);
+                }
+            }
+            CatalogGroup { family, ops }
+        })
+        .collect()
+}
+
 #[tauri::command]
 fn ui_language(app: AppHandle) -> Lang {
     lang(&app)
@@ -782,16 +976,23 @@ struct Engines {
     /// `macos` or `windows`, to adapt the Settings page.
     platform: &'static str,
     ffmpeg: Option<String>,
+    /// The ffmpeg shipped inside the app, rather than an installed one.
+    ffmpeg_bundled: bool,
     libreoffice: Option<String>,
     autostart: bool,
 }
 
 #[tauri::command]
 fn engine_status(app: AppHandle) -> Engines {
+    let ffmpeg = clementine_core::engines::find_tool("ffmpeg");
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.to_path_buf()));
     Engines {
         platform: std::env::consts::OS,
         version: app.package_info().version.to_string(),
-        ffmpeg: clementine_core::engines::find_tool("ffmpeg").map(|p| p.display().to_string()),
+        ffmpeg_bundled: ffmpeg.as_ref().and_then(|p| p.parent()) == exe_dir.as_deref(),
+        ffmpeg: ffmpeg.map(|p| p.display().to_string()),
         libreoffice: clementine_core::engines::document::office().map(|p| p.display().to_string()),
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
     }
@@ -1016,6 +1217,7 @@ fn main() {
             get_settings,
             save_settings,
             ui_language,
+            operation_catalog,
             choose_folder,
             engine_status,
             install_engine,
@@ -1026,6 +1228,9 @@ fn main() {
             float_drag,
             float_remove,
             float_open_wheel,
+            editor_file,
+            editor_apply,
+            editor_close,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -1040,6 +1245,7 @@ fn main() {
                 settings_path,
                 session: Mutex::new(Session::default()),
                 floating: Mutex::new(Vec::new()),
+                editing: Mutex::new(None),
             });
 
             let handle = app.handle().clone();
@@ -1080,6 +1286,14 @@ fn main() {
         // way back when the menu-bar icon is hidden.
         #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => open_settings(_app),
+        // Finder's "Open With → Clémentine", or `open -a Clémentine <files>`.
+        #[cfg(target_os = "macos")]
+        RunEvent::Opened { urls } => {
+            let paths: Vec<PathBuf> = urls.iter().filter_map(|u| u.to_file_path().ok()).collect();
+            if !paths.is_empty() {
+                queue_selection(_app, paths);
+            }
+        }
         _ => {}
     });
 }

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Clémentine</title>
+  <link rel="stylesheet" href="editor.css">
+</head>
+<body>
+  <header data-tauri-drag-region>
+    <span id="name" data-tauri-drag-region></span>
+  </header>
+
+  <main id="stage">
+    <video id="video" controls playsinline hidden></video>
+    <audio id="audio" controls hidden></audio>
+    <div id="picture" hidden>
+      <img id="image" alt="" draggable="false">
+      <div id="crop"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i></div>
+    </div>
+    <p id="no-preview" class="muted" hidden>No preview for this format: enter the values below.</p>
+  </main>
+
+  <section id="trim-tools" hidden>
+    <div id="track" title="Click to move the playhead">
+      <div id="range"></div>
+      <div id="playhead"></div>
+      <span class="handle" id="h-start"></span>
+      <span class="handle" id="h-end"></span>
+    </div>
+    <div class="bar">
+      <label>Start <input id="start" class="time"></label>
+      <button id="mark-start" title="I">Start here</button>
+      <label>End <input id="end" class="time"></label>
+      <button id="mark-end" title="O">End here</button>
+      <span class="muted" id="length"></span>
+    </div>
+  </section>
+
+  <section id="crop-tools" hidden>
+    <div class="bar">
+      <label>Ratio
+        <select id="ratio">
+          <option value="0">Free</option>
+          <option value="1">1:1</option>
+          <option value="1.7778">16:9</option>
+          <option value="1.3333">4:3</option>
+          <option value="0.5625">9:16</option>
+        </select>
+      </label>
+      <label>X <input id="cx" type="number" min="0"></label>
+      <label>Y <input id="cy" type="number" min="0"></label>
+      <label>W <input id="cw" type="number" min="1"></label>
+      <label>H <input id="ch" type="number" min="1"></label>
+    </div>
+  </section>
+
+  <footer class="bar">
+    <span id="status" class="muted"></span>
+    <span class="spacer"></span>
+    <button id="cancel">Cancel</button>
+    <button id="apply" class="primary">Trim</button>
+  </footer>
+
+  <script src="editor.js"></script>
+</body>
+</html>

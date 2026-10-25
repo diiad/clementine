@@ -52,6 +52,7 @@ const FR = {
   "ffmpeg (audio & video)": "ffmpeg (audio et vidéo)",
   "LibreOffice (slides, better Office → PDF)": "LibreOffice (présentations, meilleur Office → PDF)",
   "Found": "Installé",
+  "Built in": "Intégré",
   "Not installed": "Non installé",
   "Press keys…": "Tapez les touches…",
   "Add ⌘, ⌥ or ⌃": "Ajoutez ⌘, ⌥ ou ⌃",
@@ -59,6 +60,38 @@ const FR = {
   "None": "Aucun",
   "Version": "Version",
   "MIT licensed": "licence MIT",
+  "Video preset": "Préréglage vidéo",
+  "Standard (follows quality)": "Standard (suit la qualité)",
+  "Web (≤ 1080p, lighter)": "Web (≤ 1080p, plus léger)",
+  "Max (near lossless)": "Max (quasi sans perte)",
+  "“Fit size” target": "Taille visée par « ≤ … Mo »",
+  "8 MB": "8 Mo",
+  "10 MB (Discord)": "10 Mo (Discord)",
+  "25 MB (email)": "25 Mo (e-mail)",
+  "50 MB": "50 Mo",
+  "100 MB": "100 Mo",
+  "Recipes": "Recettes",
+  "Chain several steps into one slice, shown first on the Tools wheel.":
+    "Enchaînez plusieurs étapes dans une seule tranche, en tête de la roue Outils.",
+  "Recipe name": "Nom de la recette",
+  "Add a step…": "Ajouter une étape…",
+  "Pick steps from the menu.": "Choisissez des étapes dans le menu.",
+  "Add recipe": "Ajouter",
+  "Save": "Enregistrer",
+  "Cancel": "Annuler",
+  "Edit": "Modifier",
+  "Delete": "Supprimer",
+  "Remove": "Retirer",
+  "Unknown step": "Étape inconnue",
+  "Images": "Images",
+  "Video": "Vidéo",
+  "Audio": "Audio",
+  "PDF": "PDF",
+  "Documents": "Documents",
+  "Spreadsheets": "Tableurs",
+  "Subtitles": "Sous-titres",
+  "Archives": "Archives",
+  "Any file": "Tout fichier",
 };
 let lang = "en";
 let platform = "macos";
@@ -160,6 +193,9 @@ function fill() {
   $("haptic_strength").value = settings.haptic_strength;
   $("strength-row").hidden = !settings.haptics;
   $("custom-row").hidden = settings.output !== "custom";
+  $("video_preset").value = settings.video_preset;
+  $("target_mb").value = String(settings.target_mb);
+  renderRecipes();
   const keys = [settings.convert_key, settings.tools_key, settings.actions_key];
   $("key-warning").hidden = new Set(keys).size === keys.length;
 }
@@ -257,6 +293,12 @@ bind("tools_key", (el) => el.value);
 bind("actions_key", (el) => el.value);
 bind("output", (el) => el.value);
 bind("dpi", (el) => Number(el.value));
+bind("video_preset", (el) => el.value);
+$("target_mb").addEventListener("change", async (e) => {
+  settings.target_mb = Number(e.target.value);
+  await save();
+  loadCatalog(); // relabels "≤ N MB"
+});
 bind("quality", (el) => Number(el.value));
 bind("enabled", (el) => el.checked);
 bind("reveal_after", (el) => el.checked);
@@ -289,6 +331,7 @@ $("language").addEventListener("change", async (e) => {
   translatePage();
   fill();
   refreshEngines();
+  loadCatalog();
 });
 $("quality").addEventListener("input", (e) => ($("quality-val").textContent = e.target.value));
 
@@ -304,9 +347,9 @@ $("autostart").addEventListener("change", (e) => invoke("set_autostart", { enabl
 
 const installing = new Set();
 
-function status(id, path) {
+function status(id, path, bundled = false) {
   const el = $(id);
-  el.textContent = t(path ? "Found" : "Not installed");
+  el.textContent = t(bundled ? "Built in" : path ? "Found" : "Not installed");
   el.title = path || "";
   el.className = "status " + (path ? "ok" : "missing");
   if (!installing.has(id)) $(`install-${id}`).hidden = !!path;
@@ -346,10 +389,135 @@ for (const id of ["ffmpeg", "libreoffice"]) {
 
 $("restart").addEventListener("click", () => invoke("restart_app"));
 
+// --- Recipes -------------------------------------------------------------------
+// A recipe is a name and a list of operation ids, run in order by the core.
+
+const FAMILIES = {
+  image: "Images", video: "Video", audio: "Audio", pdf: "PDF", document: "Documents",
+  spreadsheet: "Spreadsheets", subtitle: "Subtitles", archive: "Archives", any: "Any file",
+};
+let catalog = [];
+const labels = new Map(); // operation id → label
+let draft = { name: "", steps: [] };
+let editing = -1; // index of the recipe in the editor, -1 for a new one
+
+const stepLabel = (id) => {
+  const label = labels.get(id);
+  if (!label) return `${t("Unknown step")} (${id})`;
+  return id.startsWith("convert:") ? `→ ${label}` : label;
+};
+
+async function loadCatalog() {
+  catalog = await invoke("operation_catalog");
+  labels.clear();
+  const select = $("recipe-step");
+  select.replaceChildren(new Option(t("Add a step…"), ""));
+  for (const { family, ops } of catalog) {
+    const group = document.createElement("optgroup");
+    group.label = t(FAMILIES[family] || family);
+    for (const op of ops) {
+      if (!labels.has(op.id)) labels.set(op.id, op.label);
+      group.append(new Option(stepLabel(op.id), op.id));
+    }
+    select.append(group);
+  }
+  renderRecipes();
+}
+
+function stepsView(steps, removable) {
+  const box = document.createElement("span");
+  box.className = "steps";
+  steps.forEach((id, i) => {
+    if (i) box.append(Object.assign(document.createElement("span"), { className: "arrow", textContent: "›" }));
+    const chip = Object.assign(document.createElement("span"), { className: "chip", textContent: stepLabel(id) });
+    if (removable) {
+      const x = Object.assign(document.createElement("button"), { textContent: "×", title: t("Remove") });
+      x.addEventListener("click", () => {
+        draft.steps.splice(i, 1);
+        renderDraft();
+      });
+      chip.append(x);
+    }
+    box.append(chip);
+  });
+  return box;
+}
+
+function renderRecipes() {
+  if (!settings) return;
+  const list = $("recipe-list");
+  list.replaceChildren();
+  settings.recipes.forEach((r, i) => {
+    const row = Object.assign(document.createElement("div"), { className: "row recipe" });
+    const name = Object.assign(document.createElement("span"), { className: "name", textContent: r.name });
+    const edit = Object.assign(document.createElement("button"), { className: "link", textContent: t("Edit") });
+    edit.addEventListener("click", () => {
+      editing = i;
+      draft = { name: r.name, steps: [...r.steps] };
+      renderDraft();
+      $("recipe-name").focus();
+    });
+    const del = Object.assign(document.createElement("button"), { className: "link", textContent: t("Delete") });
+    del.addEventListener("click", () => {
+      settings.recipes.splice(i, 1);
+      if (editing === i) resetDraft();
+      else if (editing > i) editing--;
+      save();
+    });
+    const buttons = Object.assign(document.createElement("span"), { className: "engine" });
+    buttons.append(edit, del);
+    row.append(name, stepsView(r.steps, false), buttons);
+    list.append(row);
+  });
+  renderDraft();
+}
+
+function renderDraft() {
+  $("recipe-name").value = draft.name;
+  $("recipe-name").placeholder = t("Recipe name");
+  const steps = draft.steps.length
+    ? stepsView(draft.steps, true)
+    : Object.assign(document.createElement("span"), { className: "steps", textContent: t("Pick steps from the menu.") });
+  steps.id = "recipe-steps";
+  $("recipe-steps").replaceWith(steps);
+  $("recipe-save").textContent = t(editing < 0 ? "Add recipe" : "Save");
+  $("recipe-save").disabled = !draft.name.trim() || !draft.steps.length;
+  $("recipe-cancel").hidden = editing < 0;
+}
+
+function resetDraft() {
+  editing = -1;
+  draft = { name: "", steps: [] };
+  renderDraft();
+}
+
+$("recipe-name").addEventListener("input", (e) => {
+  draft.name = e.target.value;
+  $("recipe-save").disabled = !draft.name.trim() || !draft.steps.length;
+});
+$("recipe-step").addEventListener("change", (e) => {
+  const id = e.target.value;
+  e.target.value = "";
+  if (!id) return;
+  // An action (Copy…) can only end a recipe.
+  if (draft.steps.some((s) => s.startsWith("action:"))) draft.steps.pop();
+  draft.steps.push(id);
+  renderDraft();
+});
+$("recipe-cancel").addEventListener("click", resetDraft);
+$("recipe-save").addEventListener("click", () => {
+  const recipe = { name: draft.name.trim(), steps: draft.steps };
+  if (editing < 0) settings.recipes.push(recipe);
+  else settings.recipes[editing] = recipe;
+  editing = -1;
+  draft = { name: "", steps: [] };
+  save();
+});
+
 async function refreshEngines() {
   const engines = await invoke("engine_status");
   if (engines.ffmpeg && engines.libreoffice) $("restart-row").hidden = true;
-  status("ffmpeg", engines.ffmpeg);
+  status("ffmpeg", engines.ffmpeg, engines.ffmpeg_bundled);
   status("libreoffice", engines.libreoffice);
   $("autostart").checked = engines.autostart;
   $("version").textContent = `${t("Version")} ${engines.version} · ${t("MIT licensed")}`;
@@ -364,4 +532,5 @@ async function refreshEngines() {
   translatePage();
   fill();
   refreshEngines();
+  loadCatalog();
 })();

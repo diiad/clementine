@@ -4,13 +4,16 @@
 //! clementine list photo.heic            # what can I do with this file?
 //! clementine convert webp *.png         # convert:webp on every file
 //! clementine run tool:merge a.pdf b.pdf # any operation id from `list`
+//! clementine chain -s tool:resize-1080,convert:jpg *.png  # a recipe
 //! ```
 
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
-use clementine_core::{operations, run, Category, Options};
+use clementine_core::{operations, run, run_recipe, Category, Options, VideoPreset};
 use std::io::Write;
 use std::path::PathBuf;
+
+mod mcp;
 
 #[derive(Parser)]
 #[command(
@@ -30,6 +33,12 @@ struct Cli {
     /// Resolution for PDF/SVG rasterisation.
     #[arg(long, global = true, default_value_t = 300)]
     dpi: u32,
+    /// Video encoding preset: standard, web (≤ 1080p, lighter) or max.
+    #[arg(long, global = true, default_value = "standard", value_parser = ["standard", "web", "max"])]
+    preset: String,
+    /// Size `tool:fit-size` aims under, in MB.
+    #[arg(long, global = true, default_value_t = 10.0)]
+    target_mb: f64,
     /// Print results as JSON.
     #[arg(long, global = true)]
     json: bool,
@@ -43,6 +52,16 @@ enum Command {
     Convert { format: String, files: Vec<PathBuf> },
     /// Run any operation id, e.g. `tool:compress` or `convert:mp3`.
     Run { op: String, files: Vec<PathBuf> },
+    /// Run several operations in a row, each on the previous one's results
+    /// (e.g. `clementine chain -s tool:resize-1080,convert:jpg a.png`).
+    Chain {
+        /// Operation ids, in order (comma-separated or repeated).
+        #[arg(short, long = "step", value_delimiter = ',', required = true)]
+        steps: Vec<String>,
+        files: Vec<PathBuf>,
+    },
+    /// Serve the engine to AI agents over the Model Context Protocol (stdio).
+    Mcp,
 }
 
 fn main() -> Result<()> {
@@ -51,14 +70,25 @@ fn main() -> Result<()> {
         out_dir: cli.out.clone(),
         quality: cli.quality,
         dpi: cli.dpi,
+        video_preset: match cli.preset.as_str() {
+            "web" => VideoPreset::Web,
+            "max" => VideoPreset::Max,
+            _ => VideoPreset::Standard,
+        },
+        target_mb: cli.target_mb,
     };
-    let (op, files) = match cli.command {
+    let (steps, files) = match cli.command {
         Command::List { files } => return list(&files, cli.json),
+        Command::Mcp => return mcp::serve(),
         Command::Convert { format, files } => (
-            format!("convert:{}", format.trim_start_matches('.').to_lowercase()),
+            vec![format!(
+                "convert:{}",
+                format.trim_start_matches('.').to_lowercase()
+            )],
             files,
         ),
-        Command::Run { op, files } => (op, files),
+        Command::Run { op, files } => (vec![op], files),
+        Command::Chain { steps, files } => (steps, files),
     };
     if files.is_empty() {
         bail!("no input files");
@@ -75,7 +105,10 @@ fn main() -> Result<()> {
             let _ = std::io::stderr().flush();
         }
     };
-    let result = run(&op, &files, &opts, &progress);
+    let result = match steps.as_slice() {
+        [op] => run(op, &files, &opts, &progress),
+        _ => run_recipe(&steps, &files, &opts, &progress),
+    };
     if show_progress {
         eprint!("\r    \r");
     }

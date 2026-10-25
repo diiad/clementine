@@ -10,11 +10,13 @@
 pub mod engines;
 pub mod kind;
 mod output;
+mod recipe;
 mod registry;
 
 pub use kind::{detect, Kind};
 pub use output::{output_path, unique_path};
-pub use registry::{operations, run, Category, Operation};
+pub use recipe::{run_recipe, Recipe};
+pub use registry::{catalog, operations, run, Category, Operation};
 
 use std::path::PathBuf;
 
@@ -28,6 +30,10 @@ pub struct Options {
     pub quality: u8,
     /// Resolution used when rasterising PDF and SVG files.
     pub dpi: u32,
+    /// How videos are encoded when converted.
+    pub video_preset: VideoPreset,
+    /// Size `tool:fit-size` aims under, in megabytes (10⁶ bytes).
+    pub target_mb: f64,
 }
 
 impl Default for Options {
@@ -36,8 +42,23 @@ impl Default for Options {
             out_dir: None,
             quality: 85,
             dpi: 300,
+            video_preset: VideoPreset::Standard,
+            target_mb: 10.0,
         }
     }
+}
+
+/// Video encoding presets.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VideoPreset {
+    /// Follows the quality setting.
+    #[default]
+    Standard,
+    /// At most 1080p, lighter, always re-encoded: for sharing on the web.
+    Web,
+    /// Near-lossless, slower to encode.
+    Max,
 }
 
 /// Progress callback, receives a fraction in `0.0..=1.0`.

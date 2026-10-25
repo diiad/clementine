@@ -41,6 +41,24 @@
     </div>
     <div class="row"><label for="quality">Quality <span id="quality-val"></span></label><input id="quality" type="range" min="40" max="100"></div>
     <div class="row">
+      <label for="video_preset">Video preset</label>
+      <select id="video_preset">
+        <option value="standard">Standard (follows quality)</option>
+        <option value="web">Web (≤ 1080p, lighter)</option>
+        <option value="max">Max (near lossless)</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="target_mb">“Fit size” target</label>
+      <select id="target_mb">
+        <option value="8">8 MB</option>
+        <option value="10">10 MB (Discord)</option>
+        <option value="25">25 MB (email)</option>
+        <option value="50">50 MB</option>
+        <option value="100">100 MB</option>
+      </select>
+    </div>
+    <div class="row">
       <label for="dpi">PDF &amp; SVG resolution</label>
       <select id="dpi"><option>72</option><option>150</option><option>300</option><option>600</option></select>
     </div>
@@ -54,6 +72,23 @@
         <option value="medium">Medium</option>
         <option value="strong">Strong</option>
       </select>
+    </div>
+  </section>
+
+  <section>
+    <h2>Recipes</h2>
+    <p class="muted">Chain several steps into one slice, shown first on the Tools wheel.</p>
+    <div id="recipe-list"></div>
+    <div class="row editor">
+      <input id="recipe-name" maxlength="24" data-placeholder="Recipe name">
+      <select id="recipe-step"></select>
+    </div>
+    <div class="row editor">
+      <span id="recipe-steps" class="steps"></span>
+      <span class="engine">
+        <button id="recipe-cancel" class="install" hidden>Cancel</button>
+        <button id="recipe-save" class="install" disabled>Add recipe</button>
+      </span>
     </div>
   </section>
 

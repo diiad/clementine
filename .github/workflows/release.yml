@@ -17,19 +17,67 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: write
+    env:
+      # Signing and notarisation turn on once these secrets exist (see
+      # docs/RELEASING.md); without them the app is signed ad hoc.
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
+      - name: Fetch ffmpeg
+        run: scripts/fetch-ffmpeg.sh
+      - name: Import the Developer ID certificate
+        if: env.HAS_APPLE_CERT == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Our own keychain rather than Tauri's temporary one: the DMG and the
+          # CLI are signed after the app.
+          keychain="$RUNNER_TEMP/build.keychain"
+          password=$(uuidgen)
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          identity=$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(Developer ID Application.*\)"/\1/p' | head -n 1)
+          test -n "$identity"
+          echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+          # Notarisation, when the Apple ID secrets are there too.
+          if [ -n "$APPLE_ID" ]; then
+            {
+              echo "APPLE_ID=$APPLE_ID"
+              echo "APPLE_PASSWORD=$APPLE_PASSWORD"
+              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+            } >> "$GITHUB_ENV"
+          fi
       - name: Build app
         working-directory: app/src-tauri
-        run: cargo tauri build --bundles app
+        run: cargo tauri build --bundles app --config tauri.ffmpeg.conf.json
       - name: Build DMG
         run: scripts/make-dmg.sh
       - name: Build CLI
         run: cargo build --release -p clementine-cli
+      - name: Sign and notarise the DMG and the CLI
+        if: env.HAS_APPLE_CERT == 'true'
+        run: |
+          dmg=$(ls target/release/bundle/dmg/*.dmg)
+          codesign --force --timestamp --options runtime --sign "$APPLE_SIGNING_IDENTITY" target/release/clementine
+          codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$dmg"
+          if [ -n "${APPLE_ID:-}" ]; then
+            xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+            xcrun stapler staple "$dmg"
+          fi
       - name: Collect artifacts
         run: |
           mkdir dist
@@ -60,6 +108,8 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -74,9 +124,33 @@ jobs:
           tar -xzf pdfium.tgz -C pdfium-dist
           Copy-Item pdfium-dist/bin/pdfium.dll app/src-tauri/pdfium/
           "CLEMENTINE_PDFIUM=$PWD\app\src-tauri\pdfium\pdfium.dll" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: Fetch ffmpeg
+        shell: pwsh
+        run: scripts/fetch-ffmpeg.ps1
+      - name: Import the code signing certificate
+        if: env.HAS_WINDOWS_CERT == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "cert.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          Remove-Item $pfx
+          # Tauri signs the app, the sidecar and the installer with it.
+          $file = "app/src-tauri/tauri.ffmpeg.windows.conf.json"
+          $config = Get-Content $file -Raw | ConvertFrom-Json
+          $config.bundle | Add-Member -NotePropertyName windows -NotePropertyValue ([pscustomobject]@{
+            certificateThumbprint = $cert.Thumbprint
+            digestAlgorithm = "sha256"
+            timestampUrl = "http://timestamp.digicert.com"
+          })
+          $config | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8NoBOM $file
       - name: Build installer
         working-directory: app/src-tauri
-        run: cargo tauri build
+        run: cargo tauri build --config tauri.ffmpeg.windows.conf.json
       - name: Build CLI
         run: cargo build --release -p clementine-cli
       - name: Collect artifacts

@@ -12,12 +12,12 @@ Clémentine lives in the menu bar. Start dragging any file, from Finder or any o
 | Hold | Wheel | Examples |
 |---|---|---|
 | **⇧ Shift** | **Convert** | HEIC → JPG, MOV → MP4, PDF → DOCX, XLSX → CSV, SRT → VTT, RAR → ZIP |
-| **⌘ Command** | **Tools** | Compress, resize, rotate, strip metadata, remove background, extract text (OCR), merge PDFs, split pages, extract audio, make a thumbnail |
+| **⌘ Command** | **Tools** | Compress, fit under 10 MB, trim, crop, resize, rotate, strip metadata, remove background, extract text (OCR), merge PDFs, split pages, extract audio, make a thumbnail |
 | **⌃ Control** | **Actions** | AirDrop, Float, Copy, Move…, Copy path, open in Terminal |
 
 Drop the file on a slice and the result appears next to the original. You can let go of the key once the wheel is open; dropping in the centre cancels.
 
-Nothing is uploaded. Conversions run on your Mac, using Rust crates, macOS's own frameworks and ffmpeg.
+Nothing is uploaded. Conversions run on your Mac, using Rust crates, macOS's own frameworks and ffmpeg (built into the app).
 
 > Clémentine is an independent project inspired by the drag-and-hold workflow of [Tangerine for Mac](https://tangerineformac.com/). It isn't affiliated with Tangerine and shares no code with it.
 
@@ -28,6 +28,12 @@ Nothing is uploaded. Conversions run on your Mac, using Rust crates, macOS's own
 - **Multiple files**: the wheel shows only the conversions that apply to every selected file, plus merge tools when they make sense.
 - **On-device AI** through Apple's Vision framework: *Remove BG* cuts the subject out of a photo into a transparent PNG (macOS 14+), and *Extract text* / *OCR text* reads the text of images and scanned PDFs. Nothing is uploaded.
 - **Float shelf**: park files in a small always-on-top window and drag them out later.
+- **Trim and crop**: *Trim…* opens an editor with the video or audio and a range to keep (I/O mark it at the playhead), *Crop…* one with the picture and a frame to drag, free or 1:1, 16:9, 4:3, 9:16.
+- **Finder integration**: right-click any file → *Open With* → *Clémentine* opens the wheel for it, as does `open -a Clémentine <files>` (handy in Shortcuts).
+- **Recipes**: chain steps into one slice of the Tools wheel, e.g. *Fit 1080 px → JPG*. Build them in Settings → Recipes; only the last step's files are kept.
+- **Fit a size**: *≤ 10 MB* re-encodes a video (two-pass), audio or image to fit under a size, for Discord or email. The target is set in Settings.
+- **Video presets**: *Standard* follows the quality slider, *Web* caps at 1080p and keeps files light, *Max* is near lossless.
+- **Notifications** when a long job finishes, with an **Open** button; clicking the notification shows the result in Finder.
 - **Settings**: choose the trigger keys, where results go (next to the original, Downloads or a folder you pick), quality, PDF/SVG resolution and launch at login.
 - **Haptic feedback**: the trackpad ticks as you move across slices. Light uses AppKit; Medium and Strong drive the trackpad actuator through the private MultitouchSupport framework (loaded at runtime, falling back to AppKit).
 - **English or French**: the interface follows the macOS language, or pick one in Settings.
@@ -57,7 +63,6 @@ Any file or folder can also be zipped.
 
 ```sh
 brew install --cask diiad/tap/clementine
-brew install ffmpeg                         # audio and video
 brew install --cask libreoffice             # optional: slides, better documents
 ```
 
@@ -67,8 +72,7 @@ The command-line tool alone: `brew install diiad/tap/clementine-cli`.
 
 1. Download the latest `.dmg` from [Releases](../../releases) and drag **Clémentine** to Applications.
    The app isn't notarized yet: the first time, right-click it in Applications and choose **Open** (or run `xattr -dr com.apple.quarantine /Applications/Clémentine.app`).
-2. Install ffmpeg for audio and video: `brew install ffmpeg`.
-3. Optional: install [LibreOffice](https://www.libreoffice.org/) (`brew install --cask libreoffice`) for slides, spreadsheet → PDF, and higher-fidelity documents: DOCX/ODT/PDF output is then laid out by LibreOffice Writer (real tables, lists, images) instead of textutil + CoreText.
+2. Optional: install [LibreOffice](https://www.libreoffice.org/) (`brew install --cask libreoffice`) for slides, spreadsheet → PDF, and higher-fidelity documents: DOCX/ODT/PDF output is then laid out by LibreOffice Writer (real tables, lists, images) instead of textutil + CoreText.
 
 ### Windows
 
@@ -78,11 +82,11 @@ Windows 10 and 11. Three ways to open the wheel:
 - **Right-click** files in File Explorer → **Open with Clémentine** (under *Show more options* on Windows 11).
 - Or select files in File Explorer and press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd>, changeable in Settings.
 
-Install the `.exe` setup from [Releases](../../releases). ffmpeg (audio and video) and LibreOffice (documents and slides) install from **Settings → Engines → Install**, or with `winget install Gyan.FFmpeg` and `winget install TheDocumentFoundation.LibreOffice`. The setup isn't signed yet: on the SmartScreen warning, choose **More info → Run anyway**.
+Install the `.exe` setup from [Releases](../../releases). ffmpeg is built in; LibreOffice (documents and slides) installs from **Settings → Engines → Install**, or with `winget install TheDocumentFoundation.LibreOffice`. The setup isn't signed yet: on the SmartScreen warning, choose **More info → Run anyway**.
 
 | Available | Not yet on Windows |
 |---|---|
-| Images (JPG, PNG, WebP, AVIF output, SVG…), audio, video, documents and slides via LibreOffice, spreadsheets, subtitles, archives; PDF → images/text/documents, merge, split, rotate, first page, images → PDF (PDFium); Float, Copy, Move, Copy path, Terminal | PDF compression, HEIC/ICNS, OCR and background removal, AirDrop, haptics |
+| Images (JPG, PNG, WebP, AVIF output, SVG…), HEIC/AVIF input with Microsoft's *HEIF Image Extensions* / *AV1 Video Extension*, audio, video, documents and slides via LibreOffice, spreadsheets, subtitles, archives; PDF → images/text/documents, merge, split, rotate, first page, images → PDF (PDFium); OCR of images and scanned PDFs (Windows OCR, needs a language with OCR in Settings → Language); trim and crop; Float, Copy, Move, Copy path, Terminal | PDF compression, HEIC/ICNS output, background removal, AirDrop, haptics |
 
 ### Updates
 
@@ -116,6 +120,23 @@ clementine convert jpg *.heic                # convert:jpg on each file
 clementine convert mp4 clip.mov -o ~/Desktop # write results elsewhere
 clementine run tool:merge a.pdf b.pdf        # any operation id from `list`
 clementine run tool:compress video.mov --json
+clementine run tool:fit-size clip.mov --target-mb 25   # fit under 25 MB
+clementine convert mp4 clip.mkv --preset web           # standard, web or max
+clementine chain -s tool:resize-1080,convert:jpg *.png # a recipe: steps in order
+```
+
+### MCP server
+
+`clementine mcp` serves the engine over the [Model Context Protocol](https://modelcontextprotocol.io) (stdio), so AI agents can convert files on your machine. Tools: `list_operations`, `list_catalog`, `run_operation` and `run_recipe`.
+
+```sh
+claude mcp add clementine -- clementine mcp     # Claude Code
+```
+
+For Claude Desktop, add to `claude_desktop_config.json`:
+
+```json
+{ "mcpServers": { "clementine": { "command": "/opt/homebrew/bin/clementine", "args": ["mcp"] } } }
 ```
 
 ## How it works
@@ -156,11 +177,9 @@ cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && carg
 
 Good first issues:
 
-- Bundle a static ffmpeg build as a Tauri sidecar.
-- A trim and crop UI for video and images.
-- Signing and notarisation in the release workflow.
-- Windows and Linux support. The core is mostly portable; the PDF and drag-watcher modules are macOS-specific.
+- PDF compression and background removal on Windows.
+- Linux support. The core is mostly portable; the PDF and drag-watcher modules are platform-specific.
 
 ## License
 
-MIT. See [LICENSE](LICENSE). ffmpeg and LibreOffice run as separate programs under their own licenses. The Windows build ships [PDFium](https://pdfium.googlesource.com/pdfium/) (BSD-3-Clause, prebuilt by [pdfium-binaries](https://github.com/bblanchon/pdfium-binaries)).
+MIT. See [LICENSE](LICENSE). ffmpeg and LibreOffice run as separate programs under their own licenses; the apps bundle a static ffmpeg (GPL v3, license and source location next to it, see [docs/RELEASING.md](docs/RELEASING.md)). The Windows build ships [PDFium](https://pdfium.googlesource.com/pdfium/) (BSD-3-Clause, prebuilt by [pdfium-binaries](https://github.com/bblanchon/pdfium-binaries)).

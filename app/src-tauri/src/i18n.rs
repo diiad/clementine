@@ -88,6 +88,8 @@ pub fn tr(lang: Lang, en: &'static str) -> &'static str {
         "files" => "fichiers",
         "items" => "éléments",
         "This shortcut can't be used" => "Ce raccourci n’est pas utilisable",
+        "Open" => "Ouvrir",
+        "Show in folder" => "Afficher dans le dossier",
         _ => en,
     }
 }
@@ -125,6 +127,8 @@ pub fn op_label(lang: Lang, id: &str, label: &str) -> String {
         "tool:shift+1" => "Retarder +1 s",
         "tool:shift-1" => "Avancer −1 s",
         "tool:archive" => "Zipper ensemble",
+        "tool:trim" => "Découper…",
+        "tool:crop" => "Recadrer…",
         "action:float" => "Float",
         "action:copy" => "Copier",
         "action:move" => "Déplacer…",
@@ -133,6 +137,14 @@ pub fn op_label(lang: Lang, id: &str, label: &str) -> String {
         _ => return label.to_string(),
     };
     fr.to_string()
+}
+
+/// Wheel label for `tool:fit-size`, with the size from Settings.
+pub fn fit_size_label(lang: Lang, mb: f64) -> String {
+    match lang {
+        Lang::En => format!("≤ {mb} MB"),
+        Lang::Fr => format!("≤ {mb} Mo"),
+    }
 }
 
 #[cfg(test)]

@@ -39,6 +39,27 @@ Launch with `cd app/src-tauri && cargo tauri dev`, or open
 ## Long jobs
 - [ ] Convert a video of a minute or more to WebM: the progress ring fills and a notification appears at the end.
 - [ ] A failing job (e.g. a corrupted file) shows "Failed" with a reason.
+- [ ] The end-of-job notification has an **Open** button that opens the result; clicking the notification body reveals it in Finder (File Explorer: **Show in folder**).
+- [ ] ⌘-drop a long video on **≤ 10 MB**: the result is under 10 MB and plays. Change the target in Settings: the slice label follows.
+
+## Trim and crop
+- [ ] ⌘-drop an MP4 on **Trim…**: the editor plays it; drag the handles or press I / O at the playhead, Space plays the kept range only. **Trim** writes `clip-trimmed.mp4` of that length and closes the window.
+- [ ] An MKV or AVI (no preview): the timeline still works from typed times.
+- [ ] ⌘-drop a photo on **Crop…**: drag the frame and its corners, try 1:1 and 16:9, type X/Y/W/H. A portrait iPhone photo is shown upright and cropped where shown.
+- [ ] Esc closes the editor, Enter applies.
+
+## Finder integration
+- [ ] Right-click a file → Open With → Clémentine: the wheel opens for it (the app is never offered as the default).
+- [ ] `open -a Clémentine a.png b.png` opens the wheel for both.
+
+## Bundled ffmpeg (release builds)
+- [ ] With Homebrew's ffmpeg uninstalled, video conversion works; Settings → Engines shows ffmpeg as **Built in**.
+
+## Recipes
+- [ ] The default *Web 1080* recipe is first on the Tools wheel for images, absent for videos.
+- [ ] Settings → Recipes: name a recipe, pick steps (they show as chips, × removes one), **Add recipe**. It appears on the wheel right away.
+- [ ] **Edit** loads a recipe into the editor, **Save** replaces it; **Delete** removes it.
+- [ ] Running a recipe leaves only the final file next to the original.
 
 ## Settings
 - [ ] Change the keys, output folder and quality; restart the app and check they persist.

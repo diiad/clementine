@@ -18,9 +18,12 @@ const NATIVE: &[&str] = &[
 ];
 
 /// Whether [`decode`] can read this extension here. HEIC and AVIF go through
-/// macOS's `sips`.
+/// macOS's `sips`, or Windows' imaging codecs.
 pub fn can_decode(e: &str) -> bool {
-    e == "svg" || NATIVE.contains(&e) || cfg!(target_os = "macos")
+    e == "svg"
+        || NATIVE.contains(&e)
+        || cfg!(target_os = "macos")
+        || cfg!(windows) && matches!(e, "heic" | "heif" | "avif")
 }
 
 pub fn decode(path: &Path, dpi: u32) -> Result<DynamicImage> {
@@ -30,6 +33,9 @@ pub fn decode(path: &Path, dpi: u32) -> Result<DynamicImage> {
     }
     if NATIVE.contains(&e.as_str()) {
         return decode_native(path);
+    }
+    if cfg!(windows) {
+        return decode_system(path);
     }
     // HEIC, AVIF and anything else ImageIO understands.
     let tmp = scratch()?;
@@ -46,6 +52,17 @@ pub fn decode(path: &Path, dpi: u32) -> Result<DynamicImage> {
         ],
     )?;
     decode_native(&png)
+}
+
+/// HEIC, AVIF… through Windows' imaging codecs.
+#[cfg(windows)]
+fn decode_system(path: &Path) -> Result<DynamicImage> {
+    super::winrt::decode(path)
+}
+
+#[cfg(not(windows))]
+fn decode_system(_: &Path) -> Result<DynamicImage> {
+    unreachable!("macOS decodes through sips")
 }
 
 fn decode_native(path: &Path) -> Result<DynamicImage> {
@@ -257,6 +274,71 @@ pub fn tool(input: &Path, name: &str, opts: &Options) -> Result<PathBuf> {
     Ok(out)
 }
 
+/// Keep the `w`×`h` rectangle at `x`,`y` (pixels of the upright image,
+/// clamped to it). The result keeps the source format.
+pub fn crop(input: &Path, x: u32, y: u32, w: u32, h: u32, opts: &Options) -> Result<PathBuf> {
+    let img = decode(input, opts.dpi)?;
+    let x = x.min(img.width().saturating_sub(1));
+    let y = y.min(img.height().saturating_sub(1));
+    let w = w.clamp(1, img.width() - x);
+    let h = h.clamp(1, img.height() - y);
+    let cropped = img.crop_imm(x, y, w, h);
+    let mut target = ext(input);
+    if target == "svg" {
+        target = "png".into();
+    }
+    let out = output_path(input, "-cropped", &target, opts);
+    encode(&cropped, &target, &out, opts.quality)?;
+    Ok(out)
+}
+
+/// Re-encode so the file fits in `opts.target_mb`: the highest JPEG quality
+/// that fits (WebP for images with transparency), shrinking the image when
+/// even a low quality is too big.
+pub fn fit_size(input: &Path, opts: &Options) -> Result<PathBuf> {
+    let (limit, suffix) = super::media::target_size(opts);
+    let mut img = decode(input, opts.dpi)?;
+    let alpha = img.color().has_alpha() && img.to_rgba8().pixels().any(|p| p.0[3] < 255);
+    let target = if alpha { "webp" } else { "jpg" };
+    let out = output_path(input, &suffix, target, opts);
+    // Already small enough: re-encoding could only lose quality.
+    if std::fs::metadata(input)?.len() <= limit && crate::registry::same_format(target, &ext(input))
+    {
+        std::fs::copy(input, &out)?;
+        return Ok(out);
+    }
+    let tmp = scratch()?;
+    let probe = tmp.path().join(format!("probe.{target}"));
+    let size = |img: &DynamicImage, q: u8| -> Result<u64> {
+        encode(img, target, &probe, q)?;
+        Ok(std::fs::metadata(&probe)?.len())
+    };
+    for _ in 0..8 {
+        // Binary search for the best quality in 30..=95 that fits.
+        let (mut lo, mut hi, mut best) = (30u8, 95u8, None);
+        while lo <= hi {
+            let q = lo + (hi - lo) / 2;
+            if size(&img, q)? <= limit {
+                best = Some(q);
+                lo = q + 1;
+            } else {
+                hi = q - 1;
+            }
+        }
+        if let Some(q) = best {
+            encode(&img, target, &out, q)?;
+            return Ok(out);
+        }
+        let ratio = (limit as f64 / size(&img, 30)? as f64).sqrt() * 0.9;
+        let (w, h) = (img.width() as f64 * ratio, img.height() as f64 * ratio);
+        if w < 16.0 || h < 16.0 {
+            break;
+        }
+        img = img.resize(w as u32, h as u32, FilterType::Lanczos3);
+    }
+    Err(anyhow::anyhow!("could not fit {} in {} MB", input.display(), opts.target_mb).into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,8 +357,10 @@ mod tests {
         let opts = Options::default();
         for target in ["jpg", "webp", "bmp", "tiff", "gif", "ico", "avif"] {
             let out = convert(&src, target, &opts).unwrap();
-            if !can_decode(target) {
-                continue; // AVIF is written everywhere but read through macOS
+            // AVIF is written everywhere but read through the system: sips
+            // on macOS, an optional Store extension on Windows.
+            if target == "avif" && !cfg!(target_os = "macos") {
+                continue;
             }
             let back = decode_native(&out).or_else(|_| decode(&out, 72)).unwrap();
             assert_eq!((back.width(), back.height()), (40, 20), "{target}");
@@ -292,6 +376,29 @@ mod tests {
         assert_eq!((rotated.width(), rotated.height()), (20, 40));
         let half = decode_native(&tool(&src, "resize-50", &opts).unwrap()).unwrap();
         assert_eq!((half.width(), half.height()), (20, 10));
+        let cut = decode_native(&crop(&src, 30, 5, 100, 10, &opts).unwrap()).unwrap();
+        assert_eq!((cut.width(), cut.height()), (10, 10));
+    }
+
+    #[test]
+    fn fits_target_size() {
+        let dir = tempfile::tempdir().unwrap();
+        // Noise compresses badly: about 1 MB as a high-quality JPEG.
+        let mut seed = 1u32;
+        let img = image::RgbImage::from_fn(1200, 900, |_, _| {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            let b = seed.to_le_bytes();
+            image::Rgb([b[1], b[2], b[3]])
+        });
+        let src = dir.path().join("noise.png");
+        img.save(&src).unwrap();
+        let opts = Options {
+            target_mb: 0.2,
+            ..Default::default()
+        };
+        let out = fit_size(&src, &opts).unwrap();
+        assert_eq!(out.file_name().unwrap(), "noise-0.2MB.jpg");
+        assert!(std::fs::metadata(&out).unwrap().len() <= 200_000);
     }
 
     #[test]
