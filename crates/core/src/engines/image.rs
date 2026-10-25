@@ -357,8 +357,10 @@ mod tests {
         let opts = Options::default();
         for target in ["jpg", "webp", "bmp", "tiff", "gif", "ico", "avif"] {
             let out = convert(&src, target, &opts).unwrap();
-            if !can_decode(target) {
-                continue; // AVIF is written everywhere but read through macOS
+            // AVIF is written everywhere but read through the system: sips
+            // on macOS, an optional Store extension on Windows.
+            if target == "avif" && !cfg!(target_os = "macos") {
+                continue;
             }
             let back = decode_native(&out).or_else(|_| decode(&out, 72)).unwrap();
             assert_eq!((back.width(), back.height()), (40, 20), "{target}");

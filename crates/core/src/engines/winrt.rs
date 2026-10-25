@@ -15,7 +15,7 @@ use windows::Media::Ocr::OcrEngine;
 use windows::Storage::{FileAccessMode, StorageFile};
 
 fn err(e: windows::core::Error) -> Error {
-    anyhow::anyhow!("Windows: {}", e.message()).into()
+    anyhow::anyhow!("Windows: {}", e.message().trim_end_matches('.')).into()
 }
 
 fn decoder(path: &Path) -> Result<BitmapDecoder> {
