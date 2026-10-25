@@ -2,7 +2,7 @@
 
 use crate::i18n::Language;
 use crate::watcher::Modifier;
-use clementine_core::{Category, Options};
+use clementine_core::{Category, Options, Recipe, VideoPreset};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -35,6 +35,11 @@ pub struct Settings {
     pub custom_dir: Option<PathBuf>,
     pub quality: u8,
     pub dpi: u32,
+    pub video_preset: VideoPreset,
+    /// Size the "Fit size" tool aims under, in MB.
+    pub target_mb: f64,
+    /// Chains of operations, shown first on the Tools wheel.
+    pub recipes: Vec<Recipe>,
     pub reveal_after: bool,
     pub notify: bool,
     /// Global shortcut that opens the wheel for the Finder selection.
@@ -65,6 +70,12 @@ impl Default for Settings {
             custom_dir: None,
             quality: 85,
             dpi: 300,
+            video_preset: VideoPreset::Standard,
+            target_mb: 10.0,
+            recipes: vec![Recipe {
+                name: "Web 1080".into(),
+                steps: vec!["tool:resize-1080".into(), "convert:jpg".into()],
+            }],
             reveal_after: false,
             notify: true,
             // ⌥⌘T on macOS; Win+Alt combinations are partly taken on Windows.
@@ -121,6 +132,8 @@ impl Settings {
             out_dir,
             quality: self.quality.clamp(1, 100),
             dpi: self.dpi.clamp(36, 1200),
+            video_preset: self.video_preset,
+            target_mb: self.target_mb.clamp(0.1, 10_000.0),
         }
     }
 

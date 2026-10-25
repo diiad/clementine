@@ -743,6 +743,7 @@ dependencies = [
  "clementine-core",
  "drag",
  "libc",
+ "mac-notification-sys",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
@@ -757,6 +758,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "tauri-winrt-notification",
  "windows 0.62.2",
  "windows-core 0.62.2",
  "windows-sys 0.59.0",
@@ -770,7 +772,9 @@ dependencies = [
  "anyhow",
  "clap",
  "clementine-core",
+ "image",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -801,6 +805,7 @@ dependencies = [
  "thiserror 2.0.21",
  "webp",
  "which",
+ "windows 0.62.2",
  "winreg 0.55.0",
  "zip 2.6.1",
 ]
@@ -2193,6 +2198,12 @@ dependencies = [
  "http-body",
  "pin-project-lite",
 ]
+
+[[package]]
+name = "http-range"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2149c4b4b83390c71fab669730347d578ec6bdf759f2160c581ad8b8819733b4"
 
 [[package]]
 name = "httparse"
@@ -5289,6 +5300,7 @@ dependencies = [
  "gtk",
  "heck 0.5.0",
  "http",
+ "http-range",
  "image",
  "jni 0.21.1",
  "libc",

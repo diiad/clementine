@@ -4,6 +4,24 @@
 <dict>
   <key>LSUIElement</key>
   <true/>
+  <!-- Finder's "Open With" menu and `open -a Clémentine <files>` open the
+       wheel for any file or folder. Rank None: never the default app. -->
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Any file</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>None</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.item</string>
+        <string>public.folder</string>
+      </array>
+    </dict>
+  </array>
   <key>NSAppleEventsUsageDescription</key>
   <string>Clémentine reads the Finder selection when you open the wheel with the keyboard shortcut.</string>
 </dict>

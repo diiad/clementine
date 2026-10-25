@@ -5,3 +5,6 @@
 
 # Downloaded by CI (Windows PDF engine)
 app/src-tauri/pdfium/
+
+# Downloaded by scripts/fetch-ffmpeg.* (bundled ffmpeg)
+app/src-tauri/binaries/

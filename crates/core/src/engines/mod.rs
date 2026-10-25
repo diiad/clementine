@@ -9,6 +9,8 @@ pub mod pdf;
 pub mod sheet;
 pub mod subtitle;
 pub mod vision;
+#[cfg(windows)]
+pub mod winrt;
 
 use crate::{Error, Result};
 use std::ffi::OsStr;

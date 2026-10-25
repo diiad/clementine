@@ -28,6 +28,7 @@ pub fn run(name: &str, inputs: &[PathBuf], _opts: &Options) -> Result<Vec<PathBu
             open_terminal(&dir)?;
         }
         "reveal" => reveal(inputs)?,
+        "open" => open(inputs)?,
         other => {
             return Err(Error::Unsupported {
                 op: format!("action:{other}"),
@@ -52,6 +53,13 @@ fn reveal(paths: &[PathBuf]) -> Result<()> {
     let mut args = vec![std::ffi::OsString::from("-R")];
     args.extend(paths.iter().map(|p| p.clone().into_os_string()));
     exec("/usr/bin/open", args)?;
+    Ok(())
+}
+
+/// Open files in their default apps.
+#[cfg(target_os = "macos")]
+fn open(paths: &[PathBuf]) -> Result<()> {
+    exec("/usr/bin/open", paths)?;
     Ok(())
 }
 
@@ -184,6 +192,14 @@ fn reveal(paths: &[PathBuf]) -> Result<()> {
     Ok(())
 }
 
+#[cfg(windows)]
+fn open(paths: &[PathBuf]) -> Result<()> {
+    for p in paths {
+        std::process::Command::new("explorer.exe").arg(p).spawn()?;
+    }
+    Ok(())
+}
+
 #[cfg(not(any(target_os = "macos", windows)))]
 fn unsupported() -> Result<()> {
     Err(Error::MissingTool(
@@ -205,6 +221,10 @@ fn open_terminal(_: &std::path::Path) -> Result<()> {
 }
 #[cfg(not(any(target_os = "macos", windows)))]
 fn reveal(_: &[PathBuf]) -> Result<()> {
+    unsupported()
+}
+#[cfg(not(any(target_os = "macos", windows)))]
+fn open(_: &[PathBuf]) -> Result<()> {
     unsupported()
 }
 

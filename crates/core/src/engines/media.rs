@@ -2,7 +2,7 @@
 
 use super::find_tool;
 use crate::kind::{detect, ext, Kind};
-use crate::{output_path, Error, Options, Progress, Result};
+use crate::{output_path, Error, Options, Progress, Result, VideoPreset};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -37,7 +37,7 @@ pub fn duration(input: &Path) -> Option<f64> {
     parse_timestamp(stamp)
 }
 
-fn parse_timestamp(s: &str) -> Option<f64> {
+pub(crate) fn parse_timestamp(s: &str) -> Option<f64> {
     let mut parts = s.split(':').rev();
     let secs: f64 = parts.next()?.parse().ok()?;
     let mins: f64 = parts.next().unwrap_or("0").parse().ok()?;
@@ -121,18 +121,52 @@ fn audio_codec(target: &str) -> Vec<String> {
     })
 }
 
-fn video_codec(target: &str, crf: u8) -> Vec<String> {
-    let crf = crf.to_string();
+/// x264 settings for one encode.
+struct Enc {
+    crf: u8,
+    speed: &'static str,
+    audio: &'static str,
+}
+
+impl Enc {
+    fn crf(crf: u8) -> Self {
+        Self {
+            crf,
+            speed: "medium",
+            audio: "160k",
+        }
+    }
+
+    /// Settings for a conversion, from the quality and the video preset.
+    fn for_opts(opts: &Options) -> Self {
+        match opts.video_preset {
+            VideoPreset::Standard => Self::crf(crf_for(opts.quality)),
+            VideoPreset::Web => Self {
+                crf: crf_for(opts.quality).max(24),
+                speed: "medium",
+                audio: "128k",
+            },
+            VideoPreset::Max => Self {
+                crf: 17,
+                speed: "slow",
+                audio: "256k",
+            },
+        }
+    }
+}
+
+fn video_codec(target: &str, enc: &Enc) -> Vec<String> {
+    let crf = enc.crf.to_string();
     let mut v = match target {
         "mp4" | "m4v" | "mov" | "mkv" => s(&[
-            "-c:v", "libx264", "-preset", "medium", "-crf", &crf, "-pix_fmt", "yuv420p", "-vf",
-            EVEN, "-c:a", "aac", "-b:a", "160k",
+            "-c:v", "libx264", "-preset", enc.speed, "-crf", &crf, "-pix_fmt", "yuv420p", "-vf",
+            EVEN, "-c:a", "aac", "-b:a", enc.audio,
         ]),
         "webm" => s(&[
             "-c:v",
             "libvpx-vp9",
             "-crf",
-            &(crf.parse::<u8>().unwrap_or(23) + 10).to_string(),
+            &(enc.crf + 10).to_string(),
             "-b:v",
             "0",
             "-row-mt",
@@ -167,6 +201,16 @@ fn video_codec(target: &str, crf: u8) -> Vec<String> {
     v
 }
 
+/// Limit the height to `max` lines (keeping even dimensions), replacing or
+/// adding the `-vf` filter of `args`.
+fn cap_height(args: &mut Vec<String>, max: u32) {
+    let filter = format!("scale=-2:'min({max},ih)':flags=lanczos,{EVEN}");
+    match args.iter().position(|a| a == "-vf") {
+        Some(i) => args[i + 1] = filter,
+        None => args.extend(["-vf".into(), filter]),
+    }
+}
+
 fn input_args(input: &Path) -> Vec<String> {
     vec!["-i".into(), input.to_string_lossy().into_owned()]
 }
@@ -191,14 +235,20 @@ pub fn convert(input: &Path, target: &str, opts: &Options, progress: Progress) -
         ]));
     } else {
         // Same codecs in a different container: try a lossless remux first.
-        if matches!(target, "mov" | "mkv" | "mp4" | "m4v") && is_h264_aac(input) {
+        // The Web preset always re-encodes, to cap the size.
+        let web = opts.video_preset == VideoPreset::Web;
+        if !web && matches!(target, "mov" | "mkv" | "mp4" | "m4v") && is_h264_aac(input) {
             let mut remux = input_args(input);
             remux.extend(s(&["-map", "0", "-c", "copy"]));
             if run_ffmpeg(&remux, &out, total, progress).is_ok() {
                 return Ok(out);
             }
         }
-        args.extend(video_codec(target, crf_for(opts.quality)));
+        let mut codec = video_codec(target, &Enc::for_opts(opts));
+        if web && !codec.is_empty() {
+            cap_height(&mut codec, 1080);
+        }
+        args.extend(codec);
     }
     run_ffmpeg(&args, &out, total, progress)?;
     Ok(out)
@@ -237,7 +287,7 @@ pub fn tool(input: &Path, name: &str, opts: &Options, progress: Progress) -> Res
     let mut args = input_args(input);
     let (suffix, target): (&str, String) = match (name, is_video) {
         ("compress", true) => {
-            args.extend(video_codec("mp4", 30));
+            args.extend(video_codec("mp4", &Enc::crf(30)));
             ("-compressed", "mp4".into())
         }
         ("compress", false) => {
@@ -246,12 +296,8 @@ pub fn tool(input: &Path, name: &str, opts: &Options, progress: Progress) -> Res
         }
         ("resize-720" | "resize-1080", true) => {
             let h = if name == "resize-720" { 720 } else { 1080 };
-            let mut v = video_codec("mp4", crf_for(opts.quality));
-            let i = v
-                .iter()
-                .position(|a| a == "-vf")
-                .expect("mp4 args have -vf");
-            v[i + 1] = format!("scale=-2:'min({h},ih)'");
+            let mut v = video_codec("mp4", &Enc::for_opts(opts));
+            cap_height(&mut v, h);
             args.extend(v);
             (if h == 720 { "-720p" } else { "-1080p" }, "mp4".into())
         }
@@ -265,9 +311,10 @@ pub fn tool(input: &Path, name: &str, opts: &Options, progress: Progress) -> Res
             ("-muted", e.clone())
         }
         ("rotate-cw", true) => {
-            let mut v = video_codec(&e, crf_for(opts.quality));
+            let enc = Enc::for_opts(opts);
+            let mut v = video_codec(&e, &enc);
             if v.is_empty() {
-                v = video_codec("mp4", crf_for(opts.quality));
+                v = video_codec("mp4", &enc);
             }
             if let Some(i) = v.iter().position(|a| a == "-vf") {
                 v[i + 1] = format!("transpose=1,{EVEN}");
@@ -277,7 +324,7 @@ pub fn tool(input: &Path, name: &str, opts: &Options, progress: Progress) -> Res
             args.extend(v);
             (
                 "-rotated",
-                if video_codec(&e, 20).is_empty() {
+                if video_codec(&e, &enc).is_empty() {
                     "mp4".into()
                 } else {
                     e.clone()
@@ -285,7 +332,7 @@ pub fn tool(input: &Path, name: &str, opts: &Options, progress: Progress) -> Res
             )
         }
         ("speed-2x", true) => {
-            let mut v = video_codec("mp4", crf_for(opts.quality));
+            let mut v = video_codec("mp4", &Enc::for_opts(opts));
             let i = v
                 .iter()
                 .position(|a| a == "-vf")
@@ -333,6 +380,161 @@ pub fn tool(input: &Path, name: &str, opts: &Options, progress: Progress) -> Res
     };
     let out = output_path(input, suffix, &target, opts);
     run_ffmpeg(&args, &out, total, progress)?;
+    Ok(out)
+}
+
+/// Keep `start..end` seconds (`end` = `None`: to the end). Re-encoded, so the
+/// cut falls exactly where asked rather than on a keyframe.
+pub fn trim(
+    input: &Path,
+    start: f64,
+    end: Option<f64>,
+    opts: &Options,
+    progress: Progress,
+) -> Result<PathBuf> {
+    let e = ext(input);
+    let total = duration(input);
+    let end = end.or(total).filter(|end| *end > start).ok_or_else(|| {
+        anyhow::anyhow!("the end of the range must come after its start ({start:.2} s)")
+    })?;
+    let mut args = vec![
+        "-ss".into(),
+        format!("{start:.3}"),
+        "-t".into(),
+        format!("{:.3}", end - start),
+    ];
+    args.extend(input_args(input));
+    let target = if detect(input) == Kind::Video {
+        let enc = Enc::for_opts(opts);
+        let mut v = video_codec(&e, &enc);
+        let target = if v.is_empty() {
+            v = video_codec("mp4", &enc);
+            "mp4".to_string()
+        } else {
+            e.clone()
+        };
+        args.extend(v);
+        target
+    } else {
+        args.push("-vn".into());
+        args.extend(audio_codec(&e));
+        e.clone()
+    };
+    let out = output_path(input, "-trimmed", &target, opts);
+    run_ffmpeg(&args, &out, Some(end - start), progress)?;
+    Ok(out)
+}
+
+/// Bytes in `opts.target_mb`, and the matching file-name suffix (`-10MB`).
+pub(crate) fn target_size(opts: &Options) -> (u64, String) {
+    let mb = opts.target_mb.max(0.1);
+    ((mb * 1e6) as u64, format!("-{mb}MB"))
+}
+
+fn file_size(path: &Path) -> u64 {
+    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+}
+
+/// Re-encode so the result fits in `opts.target_mb`: two-pass H.264 at the
+/// bitrate the duration allows (smaller frames when it is low), or AAC for
+/// audio.
+pub fn fit_size(input: &Path, opts: &Options, progress: Progress) -> Result<PathBuf> {
+    let (limit, suffix) = target_size(opts);
+    let video = detect(input) == Kind::Video;
+    let target = if video { "mp4" } else { "m4a" };
+    let out = output_path(input, &suffix, target, opts);
+    // Already small enough: re-encoding could only make it bigger.
+    if file_size(input) <= limit && crate::registry::same_format(target, &ext(input)) {
+        std::fs::copy(input, &out)?;
+        return Ok(out);
+    }
+    let total = duration(input)
+        .filter(|d| *d > 0.0)
+        .ok_or_else(|| anyhow::anyhow!("could not read the duration of {}", input.display()))?;
+    // Leave room for the container.
+    let kbps = limit as f64 * 8.0 / 1000.0 / total * 0.95;
+    let too_long = || Error::Other(anyhow::anyhow!("too long to fit in {} MB", opts.target_mb));
+
+    if !video {
+        if kbps < 24.0 {
+            return Err(too_long());
+        }
+        let mut args = input_args(input);
+        let rate = format!("{}k", kbps.min(256.0) as u32);
+        args.extend(s(&["-vn", "-c:a", "aac", "-b:a", &rate]));
+        run_ffmpeg(&args, &out, Some(total), progress)?;
+        return Ok(out);
+    }
+
+    let audio_k = match kbps {
+        k if k > 1500.0 => 128.0,
+        k if k > 500.0 => 96.0,
+        _ => 64.0,
+    };
+    let mut video_k = kbps - audio_k;
+    if video_k < 50.0 {
+        return Err(too_long());
+    }
+    let height = match video_k {
+        k if k >= 2500.0 => 1080,
+        k if k >= 1200.0 => 720,
+        k if k >= 600.0 => 480,
+        k if k >= 300.0 => 360,
+        _ => 240,
+    };
+    let tmp = super::scratch()?;
+    let log = tmp.path().join("pass").to_string_lossy().into_owned();
+    let pass = |n: u8, rate: f64| {
+        let mut args = input_args(input);
+        let mut codec = s(&[
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-b:v",
+            &format!("{}k", rate as u32),
+            "-pass",
+            &n.to_string(),
+            "-passlogfile",
+            &log,
+            "-pix_fmt",
+            "yuv420p",
+            "-vf",
+            EVEN,
+        ]);
+        cap_height(&mut codec, height);
+        args.extend(codec);
+        if n == 1 {
+            args.extend(s(&["-an", "-f", "null"]));
+        } else {
+            args.extend(s(&[
+                "-c:a",
+                "aac",
+                "-b:a",
+                &format!("{}k", audio_k as u32),
+                "-movflags",
+                "+faststart",
+            ]));
+        }
+        args
+    };
+    // The null muxer ignores its file name.
+    let first = |p: f32| progress(p * 0.4);
+    run_ffmpeg(
+        &pass(1, video_k),
+        &tmp.path().join("pass1"),
+        Some(total),
+        &first,
+    )?;
+    // x264 can overshoot a little: aim lower and retry if it did.
+    for attempt in 0..3 {
+        let second = |p: f32| progress(0.4 + p * 0.6);
+        run_ffmpeg(&pass(2, video_k), &out, Some(total), &second)?;
+        if file_size(&out) <= limit || attempt == 2 {
+            break;
+        }
+        video_k *= 0.9 * limit as f64 / file_size(&out) as f64;
+    }
     Ok(out)
 }
 
@@ -475,6 +677,26 @@ mod tests {
             assert!(tool(&mp4, t, &opts, &|_| {})
                 .unwrap_or_else(|e| panic!("{t}: {e}"))
                 .exists());
+        }
+        for preset in [VideoPreset::Web, VideoPreset::Max] {
+            let o = Options {
+                video_preset: preset,
+                ..Default::default()
+            };
+            assert!(convert(&mp4, "mp4", &o, &|_| {}).unwrap().exists());
+        }
+        let small = Options {
+            target_mb: 0.1,
+            ..Default::default()
+        };
+        let cut = trim(&mp4, 0.25, Some(0.75), &opts, &|_| {}).unwrap();
+        let d = duration(&cut).unwrap();
+        assert!((d - 0.5).abs() < 0.1, "{d}");
+        assert!(trim(&wav, 0.5, None, &opts, &|_| {}).unwrap().exists());
+        assert!(trim(&wav, 0.8, Some(0.2), &opts, &|_| {}).is_err());
+        for src in [&mp4, &wav] {
+            let out = fit_size(src, &small, &|_| {}).unwrap();
+            assert!(file_size(&out) <= 100_000, "{}", out.display());
         }
         assert!(concat(&[mp4.clone(), mp4.clone()], &opts, &|_| {})
             .unwrap()

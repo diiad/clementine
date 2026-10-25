@@ -1,5 +1,6 @@
 //! On-device machine learning through Apple's Vision framework: text
-//! recognition (OCR) and subject cut-out. Nothing leaves the Mac.
+//! recognition (OCR) and subject cut-out. Nothing leaves the Mac. On Windows,
+//! text recognition goes through `Windows.Media.Ocr` (see `winrt.rs`).
 // The macOS engine is all there is; elsewhere only the stubs remain.
 #![cfg_attr(not(target_os = "macos"), allow(unused))]
 
@@ -136,8 +137,14 @@ mod mac {
 
 pub use mac::can_cut_out;
 
-/// Text recognition (macOS).
+/// Text recognition: Vision on macOS, an OCR language on Windows.
 pub fn available() -> bool {
+    #[cfg(windows)]
+    {
+        static OCR: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *OCR.get_or_init(super::winrt::ocr_available)
+    }
+    #[cfg(not(windows))]
     cfg!(target_os = "macos")
 }
 
@@ -184,6 +191,9 @@ fn reading_order(mut boxes: Vec<TextBox>) -> String {
 
 /// Recognise the text in an image file Vision can read (PNG, JPEG…).
 pub fn recognize_text(path: &Path) -> Result<String> {
+    #[cfg(windows)]
+    return super::winrt::recognize_text(path);
+    #[cfg(not(windows))]
     mac::recognize_text(path)
 }
 

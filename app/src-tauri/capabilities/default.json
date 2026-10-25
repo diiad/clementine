@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Permissions for Clémentine's own windows",
-  "windows": ["wheel", "settings", "float"],
+  "windows": ["wheel", "settings", "float", "editor"],
   "permissions": [
     "core:default",
     "core:window:allow-hide",

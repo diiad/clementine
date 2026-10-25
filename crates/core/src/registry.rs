@@ -86,12 +86,19 @@ fn convert_targets(path: &Path) -> Vec<&'static str> {
         | Kind::Slides
         | Kind::Spreadsheet => vec!["zip", "tar.gz"],
     };
-    let same = |t: &&str| match (*t, e.as_str()) {
+    targets
+        .into_iter()
+        .filter(|t| !same_format(t, &e))
+        .collect()
+}
+
+/// Whether a file with extension `e` is already in the `target` format.
+pub(crate) fn same_format(target: &str, e: &str) -> bool {
+    match (target, e) {
         ("jpg", "jpeg") | ("tiff", "tif") | ("aiff", "aif") | ("heic", "heif") => true,
         ("html", "htm") | ("md", "markdown") | ("txt", "text") | ("ogg", "oga") => true,
         (t, e) => t == e,
-    };
-    targets.into_iter().filter(|t| !same(t)).collect()
+    }
 }
 
 fn label_for_target(t: &str) -> String {
@@ -109,6 +116,7 @@ fn tool_list(kinds: &[Kind], count: usize) -> Vec<(&'static str, &'static str)> 
     if all(Kind::Image) {
         tools.extend([
             ("compress", "Compress"),
+            ("fit-size", "Fit size"),
             ("resize-50", "Resize 50%"),
             ("resize-1080", "Fit 1080 px"),
             ("rotate-cw", "Rotate ↻"),
@@ -117,6 +125,9 @@ fn tool_list(kinds: &[Kind], count: usize) -> Vec<(&'static str, &'static str)> 
             ("grayscale", "Grayscale"),
             ("strip-metadata", "Strip metadata"),
         ]);
+        if count == 1 {
+            tools.push(("crop", "Crop…"));
+        }
         if vision::available() {
             tools.push(("ocr", "Extract text"));
         }
@@ -129,6 +140,7 @@ fn tool_list(kinds: &[Kind], count: usize) -> Vec<(&'static str, &'static str)> 
     } else if all(Kind::Video) {
         tools.extend([
             ("compress", "Compress"),
+            ("fit-size", "Fit size"),
             ("resize-720", "720p"),
             ("resize-1080", "1080p"),
             ("extract-audio", "Extract audio"),
@@ -137,16 +149,23 @@ fn tool_list(kinds: &[Kind], count: usize) -> Vec<(&'static str, &'static str)> 
             ("speed-2x", "Speed ×2"),
             ("thumbnail", "Thumbnail"),
         ]);
+        if count == 1 {
+            tools.push(("trim", "Trim…"));
+        }
         if count > 1 {
             tools.push(("merge", "Merge"));
         }
     } else if all(Kind::Audio) {
         tools.extend([
             ("compress", "Compress"),
+            ("fit-size", "Fit size"),
             ("normalize", "Normalize"),
             ("mono", "Mono"),
             ("trim-silence", "Trim silence"),
         ]);
+        if count == 1 {
+            tools.push(("trim", "Trim…"));
+        }
         if count > 1 {
             tools.push(("merge", "Merge"));
         }
@@ -217,6 +236,63 @@ pub fn operations(inputs: &[PathBuf], category: Category) -> Vec<Operation> {
             .map(|(id, label)| Operation::new(category, format!("action:{id}"), *label))
             .collect(),
     }
+}
+
+/// Every convert and tool operation, grouped by the family of files it
+/// applies to (`image`, `video`…), plus the headless actions under `any`.
+/// Recipes are built from these.
+pub fn catalog() -> Vec<(&'static str, Vec<Operation>)> {
+    let families: &[(&str, &[&str])] = &[
+        ("image", &["png", "jpg"]),
+        ("video", &["mp4", "mov"]),
+        ("audio", &["mp3", "wav"]),
+        ("pdf", &["pdf"]),
+        ("document", &["docx", "txt", "pptx"]),
+        ("spreadsheet", &["xlsx", "csv"]),
+        ("subtitle", &["srt", "vtt"]),
+        ("archive", &["zip"]),
+    ];
+    let mut groups = Vec::new();
+    for (family, exts) in families {
+        let mut ops: Vec<Operation> = Vec::new();
+        let mut add = |op: Operation| {
+            if !ops.iter().any(|o| o.id == op.id) {
+                ops.push(op);
+            }
+        };
+        for e in *exts {
+            let sample = PathBuf::from(format!("sample.{e}"));
+            for t in convert_targets(&sample) {
+                if !matches!(t, "zip" | "tar.gz") || *family == "archive" {
+                    add(Operation::new(
+                        Category::Convert,
+                        format!("convert:{t}"),
+                        label_for_target(t),
+                    ));
+                }
+            }
+            let kind = detect(&sample);
+            for (id, label) in tool_list(&[kind, kind], 2) {
+                // Trim and crop need a range picked in the editor.
+                if !matches!(id, "archive" | "trim" | "crop") {
+                    add(Operation::new(Category::Tool, format!("tool:{id}"), label));
+                }
+            }
+        }
+        if !ops.is_empty() {
+            groups.push((*family, ops));
+        }
+    }
+    groups.push((
+        "any",
+        vec![
+            Operation::new(Category::Convert, "convert:zip", "ZIP"),
+            Operation::new(Category::Tool, "tool:archive", "Zip together"),
+            Operation::new(Category::Action, "action:copy", "Copy"),
+            Operation::new(Category::Action, "action:copy-path", "Copy path"),
+        ],
+    ));
+    groups
 }
 
 /// Execute `op_id` on `inputs` and return the files that were produced.
@@ -309,12 +385,38 @@ fn run_tool(
             _ => Err(unsupported(name, first)),
         };
     }
+    // `trim=<start>-<end>` and `crop=<x>,<y>,<w>,<h>` carry their parameters.
+    let (name, param) = match name.split_once('=') {
+        Some((n, p)) => (n, Some(p)),
+        None => (name, None),
+    };
+    let needs = |example: &str| {
+        Error::Other(anyhow::anyhow!(
+            "tool:{name} needs parameters, e.g. tool:{name}={example}"
+        ))
+    };
     let n = inputs.len() as f32;
     let mut out = Vec::new();
     for (i, input) in inputs.iter().enumerate() {
         let sub = |f: f32| progress((i as f32 + f) / n);
         let produced = match detect(input) {
+            Kind::Audio | Kind::Video if name == "trim" => {
+                let (start, end) = param
+                    .and_then(parse_range)
+                    .ok_or_else(|| needs("0:10-0:30"))?;
+                media::trim(input, start, end, opts, &sub).map(|p| vec![p])
+            }
+            Kind::Image | Kind::Svg if name == "crop" => {
+                let [x, y, w, h] = param
+                    .and_then(parse_rect)
+                    .ok_or_else(|| needs("0,0,800,600"))?;
+                image::crop(input, x, y, w, h, opts).map(|p| vec![p])
+            }
             Kind::Image if name == "ocr" => vision::image_text(input, opts).map(|p| vec![p]),
+            Kind::Image if name == "fit-size" => image::fit_size(input, opts).map(|p| vec![p]),
+            Kind::Audio | Kind::Video if name == "fit-size" => {
+                media::fit_size(input, opts, &sub).map(|p| vec![p])
+            }
             Kind::Image if name == "remove-bg" => {
                 vision::remove_background(input, opts).map(|p| vec![p])
             }
@@ -329,6 +431,28 @@ fn run_tool(
     }
     progress(1.0);
     Ok(out)
+}
+
+/// `10-30`, `0:10-1:02.5` or `10-` (to the end), in seconds.
+fn parse_range(s: &str) -> Option<(f64, Option<f64>)> {
+    let (a, b) = s.split_once('-')?;
+    let start = match a.trim() {
+        "" => 0.0,
+        a => media::parse_timestamp(a)?,
+    };
+    let end = match b.trim() {
+        "" => None,
+        b => Some(media::parse_timestamp(b)?),
+    };
+    Some((start, end))
+}
+
+fn parse_rect(s: &str) -> Option<[u32; 4]> {
+    let v: Vec<u32> = s
+        .split(',')
+        .map(|p| p.trim().parse().ok())
+        .collect::<Option<_>>()?;
+    v.try_into().ok()
 }
 
 #[cfg(test)]
@@ -355,6 +479,33 @@ mod tests {
         assert!(ops.contains(&"convert:webp".to_string()));
         assert!(!ops.contains(&"convert:png".to_string()));
         assert!(!ops.contains(&"convert:jpg".to_string()));
+    }
+
+    #[test]
+    fn parses_tool_parameters() {
+        assert_eq!(parse_range("10-30"), Some((10.0, Some(30.0))));
+        assert_eq!(parse_range("0:10-1:02.5"), Some((10.0, Some(62.5))));
+        assert_eq!(parse_range("5-"), Some((5.0, None)));
+        assert_eq!(parse_range("abc"), None);
+        assert_eq!(parse_rect("1, 2,3,4"), Some([1, 2, 3, 4]));
+        assert_eq!(parse_rect("1,2,3"), None);
+        let err = run("tool:crop", &["a.png".into()], &Options::default(), &|_| {});
+        assert!(err
+            .unwrap_err()
+            .to_string()
+            .contains("tool:crop=0,0,800,600"));
+    }
+
+    #[test]
+    fn catalog_groups_operations() {
+        let groups = catalog();
+        let image = &groups.iter().find(|(f, _)| *f == "image").unwrap().1;
+        let image = ids(image.clone());
+        assert!(image.contains(&"convert:jpg".to_string()));
+        assert!(image.contains(&"convert:png".to_string()));
+        assert!(image.contains(&"tool:fit-size".to_string()));
+        assert!(!image.contains(&"tool:archive".to_string()));
+        assert_eq!(groups.last().unwrap().0, "any");
     }
 
     #[test]
